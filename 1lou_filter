@@ -46,11 +46,19 @@
     // 创建基础样式
     const style = document.createElement('style');
     style.textContent = `
+        .panel-header {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .panel-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: left;
+        }
         #filterTip {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            top: 30px;
+            margin-left: 10px;
             padding: 4px 12px;
             border-radius: 12px;
             font-size: 13px;
@@ -61,7 +69,7 @@
             opacity: 0;
             pointer-events: none;
             white-space: nowrap;
-            z-index: 1;
+            display: none;
         }
         #filterPanel {
             position: fixed;
@@ -91,11 +99,6 @@
             cursor: pointer;
             border-radius: 5px 0 0 5px;
             font-size: 20px;
-        }
-        .panel-header {
-            margin-bottom: 15px;
-            text-align: center;
-            position: relative;
         }
         .filter-section {
             margin-bottom: 15px;
@@ -181,7 +184,7 @@
         panel.innerHTML = `
             <div id="toggleFilter">◀</div>
             <div class="panel-header">
-                <strong style="font-size: 16px;">结果过滤器</strong>
+                <span class="panel-title">结果过滤器</span>
                 <div id="filterTip"></div>
             </div>
 
