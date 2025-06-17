@@ -364,25 +364,37 @@
 
         items.forEach(item => {
             const title = item.querySelector('.subject a').textContent;
-            // 检查是否包含必需关键词
+            
+            // 检查必需关键词 - 修复逻辑
             const hasIncludeKeyword = includeKeywords.length === 0 || includeKeywords.some(keyword => {
+                if (!keyword.trim()) return false; // 跳过空关键词
                 try {
                     const regex = new RegExp(keyword.trim(), 'i');
                     return regex.test(title);
                 } catch(e) {
-                    return title.toLowerCase().includes(keyword.toLowerCase().trim());
+                    const normalizedTitle = title.toLowerCase();
+                    const normalizedKeyword = keyword.toLowerCase().trim();
+                    return normalizedTitle.includes(normalizedKeyword);
                 }
             });
-            // 检查是否包含排除关键词
+
+            // 检查排除关键词
             const hasExcludeKeyword = excludeKeywords.some(keyword => {
+                if (!keyword.trim()) return false; // 跳过空关键词
                 try {
                     const regex = new RegExp(keyword.trim(), 'i');
                     return regex.test(title);
                 } catch(e) {
-                    return title.toLowerCase().includes(keyword.toLowerCase().trim());
+                    const normalizedTitle = title.toLowerCase();
+                    const normalizedKeyword = keyword.toLowerCase().trim();
+                    return normalizedTitle.includes(normalizedKeyword);
                 }
             });
-            if(hasIncludeKeyword && !hasExcludeKeyword) {
+
+            // 判断显示条件：
+            // 1. 如果有必需关键词，则必须匹配其中之一
+            // 2. 同时不能包含任何排除关键词
+            if ((includeKeywords.length === 0 || hasIncludeKeyword) && !hasExcludeKeyword) {
                 item.style.display = '';
                 item.classList.remove('filtered-item');
                 showCount++;
