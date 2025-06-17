@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -9,10 +9,38 @@
 // @match        *://*.btbtt*.me/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @downloadURL  https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter
+// @updateURL    https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    // 面板内自动消失提示条
+    function showTip(message, type = 'info', duration = 1800) {
+        let tip = document.getElementById('filterTip');
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.id = 'filterTip';
+            tip.style.position = 'fixed';
+            tip.style.right = '20px';
+            tip.style.top = '70px';
+            tip.style.zIndex = '10000';
+            tip.style.background = type === 'error' ? '#e74c3c' : '#4a90e2';
+            tip.style.color = '#fff';
+            tip.style.padding = '8px 16px';
+            tip.style.borderRadius = '4px';
+            tip.style.fontSize = '14px';
+            tip.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+            tip.style.opacity = '0.98';
+            document.body.appendChild(tip);
+        }
+        tip.textContent = message;
+        tip.style.display = '';
+        tip.style.background = type === 'error' ? '#e74c3c' : '#4a90e2';
+        clearTimeout(tip._hideTimer);
+        tip._hideTimer = setTimeout(() => { tip.style.display = 'none'; }, duration);
+    }
 
     // 创建基础样式
     const style = document.createElement('style');
@@ -164,7 +192,7 @@
             </div>
 
             <div class="shortcut-tip">
-                快捷键: Ctrl+Shift+F (开关面板) | Ctrl+Enter (应用过滤)
+                快捷键: Ctrl+Shift+F (开关面板) | Ctrl+Enter (保存并应用)
             </div>
         `;
 
@@ -180,12 +208,9 @@
         addEventListeners(panel);
     }
 
-    // 新增事件监听器函数
     function addEventListeners(panel) {
         // 面板切换
-        let isPanelVisible = GM_getValue('panelVisible', false);
         const toggleBtn = panel.querySelector('#toggleFilter');
-
         toggleBtn.addEventListener('click', () => {
             togglePanel();
         });
@@ -203,6 +228,14 @@
         document.getElementById('exportFilters').addEventListener('click', exportFilters);
         document.getElementById('importFilters').addEventListener('click', importFilters);
 
+        // 关键词输入框快捷键 Ctrl+Enter 直接保存并应用
+        document.getElementById('includeKeywords').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') saveFilters();
+        });
+        document.getElementById('excludeKeywords').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') saveFilters();
+        });
+
         // 全局快捷键
         document.addEventListener('keydown', (e) => {
             // Ctrl+Shift+F 切换面板
@@ -212,13 +245,11 @@
             }
             // Ctrl+Enter 应用过滤
             if(e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                applyFilters();
+                // 在textarea内已处理，这里不重复应用
             }
         });
     }
 
-    // 新增功能函数
     function togglePanel() {
         const panel = document.getElementById('filterPanel');
         const toggleBtn = panel.querySelector('#toggleFilter');
@@ -226,8 +257,6 @@
 
         panel.style.right = isPanelVisible ? '-300px' : '0';
         toggleBtn.innerHTML = isPanelVisible ? '◀' : '▶';
-
-        // 保存状态
         GM_setValue('panelVisible', !isPanelVisible);
     }
 
@@ -236,15 +265,17 @@
         const excludeKeywords = document.getElementById('excludeKeywords').value;
         GM_setValue('includeKeywords', includeKeywords);
         GM_setValue('excludeKeywords', excludeKeywords);
-        alert('过滤规则已保存');
+        showTip('过滤规则已保存');
+        applyFilters();
     }
 
     function resetFilters() {
-        if(confirm('确定要重置所有过滤规则吗？')) {
+        // confirm 提示仍保留，但用更现代的方式可以考虑用自定义确认框
+        if (window.confirm('确定要重置所有过滤规则吗？')) {
             document.getElementById('includeKeywords').value = '2160p\n4K\nHDR\n';
             document.getElementById('excludeKeywords').value = '国语配音\n合集';
             saveFilters();
-            applyFilters();
+            showTip('已重置为默认规则');
         }
     }
 
@@ -253,7 +284,6 @@
             includeKeywords: document.getElementById('includeKeywords').value,
             excludeKeywords: document.getElementById('excludeKeywords').value
         };
-
         const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
         const url = URL.createObjectURL(blob);
 
@@ -263,49 +293,41 @@
         a.click();
 
         URL.revokeObjectURL(url);
+        showTip('配置已导出');
     }
 
     function importFilters() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
-
         input.onchange = (e) => {
             const file = e.target.files[0];
             const reader = new FileReader();
-
             reader.onload = (event) => {
                 try {
                     const config = JSON.parse(event.target.result);
                     document.getElementById('includeKeywords').value = config.includeKeywords || '';
                     document.getElementById('excludeKeywords').value = config.excludeKeywords || '';
                     saveFilters();
-                    applyFilters();
-                    alert('配置导入成功');
-                } catch(err) {
-                    alert('配置文件格式错误');
+                    showTip('配置导入成功');
+                } catch (err) {
+                    showTip('配置文件格式错误', 'error');
                 }
             };
-
             reader.readAsText(file);
         };
-
         input.click();
     }
 
-    // 应用过滤规则
     function applyFilters() {
         const includeKeywords = document.getElementById('includeKeywords').value.split('\n').filter(k => k.trim());
         const excludeKeywords = document.getElementById('excludeKeywords').value.split('\n').filter(k => k.trim());
         let showCount = 0;
         let hideCount = 0;
-
-        // 获取所有搜索结果项
         const items = document.querySelectorAll('li.media.thread');
 
         items.forEach(item => {
             const title = item.querySelector('.subject a').textContent;
-
             // 检查是否包含必需关键词
             const hasIncludeKeyword = includeKeywords.length === 0 || includeKeywords.some(keyword => {
                 try {
@@ -315,7 +337,6 @@
                     return title.toLowerCase().includes(keyword.toLowerCase().trim());
                 }
             });
-
             // 检查是否包含排除关键词
             const hasExcludeKeyword = excludeKeywords.some(keyword => {
                 try {
@@ -325,8 +346,6 @@
                     return title.toLowerCase().includes(keyword.toLowerCase().trim());
                 }
             });
-
-            // 根据规则显示或隐藏
             if(hasIncludeKeyword && !hasExcludeKeyword) {
                 item.style.display = '';
                 item.classList.remove('filtered-item');
@@ -338,7 +357,6 @@
             }
         });
 
-        // 更新统计数据
         document.getElementById('showCount').textContent = showCount;
         document.getElementById('hideCount').textContent = hideCount;
     }
