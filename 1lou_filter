@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.3
+// @version      0.6.4
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -18,25 +18,29 @@
 
     // 面板内自动消失提示条
     function showTip(message, type = 'info', duration = 1800) {
-        // 获取或创建提示元素
         let tip = document.getElementById('filterTip');
         if (!tip) {
-            // 如果找不到提示容器，就主动获取面板头部并创建提示元素
             const panelHeader = document.querySelector('.panel-header');
-            if (!panelHeader) return;
+            if (!panelHeader) {
+                console.error('找不到面板头部');
+                return;
+            }
             
             tip = document.createElement('div');
             tip.id = 'filterTip';
             panelHeader.appendChild(tip);
         }
 
+        // 重置样式
+        tip.style.display = '';
+        tip.style.opacity = '0';
+        
         // 设置消息和样式
         tip.textContent = message;
         tip.style.background = type === 'error' ? 'rgba(231,76,60,0.95)' : 'rgba(74,144,226,0.95)';
         
-        // 显示动画
-        tip.style.opacity = '0';
-        tip.style.display = '';
+        // 强制重排后再显示动画
+        void tip.offsetWidth;
         
         requestAnimationFrame(() => {
             tip.style.opacity = '1';
@@ -59,15 +63,15 @@
             margin-bottom: 15px;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             position: relative;
+            width: 100%;
         }
         .panel-title {
             font-size: 16px;
             font-weight: bold;
-            text-align: left;
         }
         #filterTip {
-            margin-left: 10px;
             padding: 4px 12px;
             border-radius: 12px;
             font-size: 13px;
@@ -76,9 +80,8 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             transition: all 0.3s ease;
             opacity: 0;
-            pointer-events: none;
             white-space: nowrap;
-            display: none;
+            margin-left: auto;
         }
         #filterPanel {
             position: fixed;
