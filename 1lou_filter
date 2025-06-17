@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.6
+// @version      0.6.7
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
