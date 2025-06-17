@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.1
+// @version      0.6.2
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -19,20 +19,11 @@
     // 面板内自动消失提示条
     function showTip(message, type = 'info', duration = 1800) {
         let tip = document.getElementById('filterTip');
-        if (!tip) {
-            tip = document.createElement('div');
-            tip.id = 'filterTip';
-            document.body.appendChild(tip);
-        }
+        if (!tip) return; // 如果找不到提示容器就直接返回
 
         // 设置消息和样式
         tip.textContent = message;
         tip.style.background = type === 'error' ? 'rgba(231,76,60,0.95)' : 'rgba(74,144,226,0.95)';
-        
-        // 根据面板状态调整位置
-        const panel = document.getElementById('filterPanel');
-        const isPanelVisible = panel && panel.style.right === '0px';
-        tip.style.right = isPanelVisible ? '320px' : '20px'; // 面板打开时偏移
         
         // 显示动画
         tip.style.opacity = '0';
@@ -56,18 +47,21 @@
     const style = document.createElement('style');
     style.textContent = `
         #filterTip {
-            position: fixed;
-            right: 20px;  /* 与面板右对齐 */
-            top: 100px;   /* 与面板顶部对齐 */
-            padding: 8px 20px;
-            border-radius: 20px;
-            font-size: 14px;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 30px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
             background: rgba(74,144,226,0.95);
             color: #fff;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             transition: all 0.3s ease;
-            z-index: 10000;
+            opacity: 0;
             pointer-events: none;
+            white-space: nowrap;
+            z-index: 1;
         }
         #filterPanel {
             position: fixed;
@@ -97,6 +91,11 @@
             cursor: pointer;
             border-radius: 5px 0 0 5px;
             font-size: 20px;
+        }
+        .panel-header {
+            margin-bottom: 15px;
+            text-align: center;
+            position: relative;
         }
         .filter-section {
             margin-bottom: 15px;
@@ -181,8 +180,9 @@
 
         panel.innerHTML = `
             <div id="toggleFilter">◀</div>
-            <div style="margin-bottom: 15px;">
+            <div class="panel-header">
                 <strong style="font-size: 16px;">结果过滤器</strong>
+                <div id="filterTip"></div>
             </div>
 
             <div class="filter-section">
@@ -278,15 +278,9 @@
         const panel = document.getElementById('filterPanel');
         const toggleBtn = panel.querySelector('#toggleFilter');
         const isPanelVisible = panel.style.right === '0px';
-        const tip = document.getElementById('filterTip');
 
         panel.style.right = isPanelVisible ? '-300px' : '0';
         toggleBtn.innerHTML = isPanelVisible ? '◀' : '▶';
-        
-        // 更新提示条位置
-        if (tip) {
-            tip.style.right = isPanelVisible ? '20px' : '320px';
-        }
         
         GM_setValue('panelVisible', !isPanelVisible);
     }
