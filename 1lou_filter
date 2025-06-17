@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.4
+// @version      0.6.5
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -31,13 +31,13 @@
             panelHeader.appendChild(tip);
         }
 
-        // 重置样式
-        tip.style.display = '';
-        tip.style.opacity = '0';
-        
         // 设置消息和样式
         tip.textContent = message;
-        tip.style.background = type === 'error' ? 'rgba(231,76,60,0.95)' : 'rgba(74,144,226,0.95)';
+        tip.style.color = type === 'error' ? '#e74c3c' : '#4a90e2';
+        
+        // 重置动画
+        tip.style.display = '';
+        tip.style.opacity = '0';
         
         // 强制重排后再显示动画
         void tip.offsetWidth;
@@ -63,25 +63,25 @@
             margin-bottom: 15px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
             position: relative;
-            width: 100%;
+            height: 30px;  /* 固定高度，防止提示出现时抖动 */
         }
         .panel-title {
             font-size: 16px;
             font-weight: bold;
         }
         #filterTip {
+            margin-left: 10px;
             padding: 4px 12px;
-            border-radius: 12px;
             font-size: 13px;
-            background: rgba(74,144,226,0.95);
-            color: #fff;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            transition: all 0.3s ease;
+            color: #4a90e2;
+            transition: opacity 0.3s ease;
             opacity: 0;
             white-space: nowrap;
-            margin-left: auto;
+            position: absolute;
+            left: 100px;  /* 距离标题固定距离 */
+            top: 50%;
+            transform: translateY(-50%);
         }
         #filterPanel {
             position: fixed;
