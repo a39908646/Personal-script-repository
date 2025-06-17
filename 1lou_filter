@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.2
+// @version      0.6.3
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -18,8 +18,17 @@
 
     // 面板内自动消失提示条
     function showTip(message, type = 'info', duration = 1800) {
+        // 获取或创建提示元素
         let tip = document.getElementById('filterTip');
-        if (!tip) return; // 如果找不到提示容器就直接返回
+        if (!tip) {
+            // 如果找不到提示容器，就主动获取面板头部并创建提示元素
+            const panelHeader = document.querySelector('.panel-header');
+            if (!panelHeader) return;
+            
+            tip = document.createElement('div');
+            tip.id = 'filterTip';
+            panelHeader.appendChild(tip);
+        }
 
         // 设置消息和样式
         tip.textContent = message;
