@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.5
+// @version      0.6.6
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -215,9 +215,8 @@
             </div>
 
             <div class="filter-buttons">
-                <button id="saveFilters" class="filter-button">保存</button>
-                <button id="applyFilters" class="filter-button">应用</button>
-                <button id="resetFilters" class="filter-button danger">重置</button>
+                <button id="saveFilters" class="filter-button">保存并应用</button>
+                <button id="resetFilters" class="filter-button danger">恢复默认</button>
             </div>
 
             <div class="import-export">
@@ -256,9 +255,6 @@
 
         // 保存按钮
         document.getElementById('saveFilters').addEventListener('click', saveFilters);
-
-        // 应用按钮
-        document.getElementById('applyFilters').addEventListener('click', applyFilters);
 
         // 重置按钮
         document.getElementById('resetFilters').addEventListener('click', resetFilters);
