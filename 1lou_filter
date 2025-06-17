@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.7
+// @version      0.6.9
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -216,7 +216,7 @@
 
             <div class="filter-buttons">
                 <button id="saveFilters" class="filter-button">保存并应用</button>
-                <button id="resetFilters" class="filter-button danger">恢复默认</button>
+                <button id="resetFilters" class="filter-button danger">清空</button>
             </div>
 
             <div class="import-export">
@@ -306,13 +306,10 @@
     }
 
     function resetFilters() {
-        // confirm 提示仍保留，但用更现代的方式可以考虑用自定义确认框
-        if (window.confirm('确定要重置所有过滤规则吗？')) {
-            document.getElementById('includeKeywords').value = '2160p\n4K\nHDR\n';
-            document.getElementById('excludeKeywords').value = '国语配音\n合集';
-            saveFilters();
-            showTip('已重置为默认规则');
-        }
+        document.getElementById('includeKeywords').value = '';
+        document.getElementById('excludeKeywords').value = '';
+        saveFilters();
+        showTip('已清空所有规则');
     }
 
     function exportFilters() {
