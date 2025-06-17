@@ -23,23 +23,40 @@
             tip = document.createElement('div');
             tip.id = 'filterTip';
             tip.style.position = 'fixed';
-            tip.style.right = '20px';
-            tip.style.top = '70px';
+            tip.style.left = '50%'; // 水平居中
+            tip.style.transform = 'translateX(-50%)'; // 确保完全居中
+            tip.style.top = '20px';  // 距顶部距离
             tip.style.zIndex = '10000';
-            tip.style.background = type === 'error' ? '#e74c3c' : '#4a90e2';
-            tip.style.color = '#fff';
-            tip.style.padding = '8px 16px';
-            tip.style.borderRadius = '4px';
+            tip.style.padding = '8px 20px';
+            tip.style.borderRadius = '20px'; // 更圆润的边角
             tip.style.fontSize = '14px';
-            tip.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
-            tip.style.opacity = '0.98';
+            tip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            tip.style.transition = 'all 0.3s ease'; // 添加过渡效果
             document.body.appendChild(tip);
         }
+
+        // 设置消息和样式
         tip.textContent = message;
+        tip.style.background = type === 'error' ? 'rgba(231,76,60,0.95)' : 'rgba(74,144,226,0.95)';
+        tip.style.color = '#fff';
+        
+        // 显示动画
+        tip.style.opacity = '0';
         tip.style.display = '';
-        tip.style.background = type === 'error' ? '#e74c3c' : '#4a90e2';
+        
+        // 使用 requestAnimationFrame 确保过渡效果生效
+        requestAnimationFrame(() => {
+            tip.style.opacity = '1';
+        });
+
+        // 自动隐藏
         clearTimeout(tip._hideTimer);
-        tip._hideTimer = setTimeout(() => { tip.style.display = 'none'; }, duration);
+        tip._hideTimer = setTimeout(() => {
+            tip.style.opacity = '0';
+            setTimeout(() => {
+                tip.style.display = 'none';
+            }, 300); // 等待淡出动画完成
+        }, duration);
     }
 
     // 创建基础样式
