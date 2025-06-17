@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6
+// @version      0.6.1
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -22,29 +22,22 @@
         if (!tip) {
             tip = document.createElement('div');
             tip.id = 'filterTip';
-            tip.style.position = 'fixed';
-            tip.style.left = '50%'; // 水平居中
-            tip.style.transform = 'translateX(-50%)'; // 确保完全居中
-            tip.style.top = '20px';  // 距顶部距离
-            tip.style.zIndex = '10000';
-            tip.style.padding = '8px 20px';
-            tip.style.borderRadius = '20px'; // 更圆润的边角
-            tip.style.fontSize = '14px';
-            tip.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-            tip.style.transition = 'all 0.3s ease'; // 添加过渡效果
             document.body.appendChild(tip);
         }
 
         // 设置消息和样式
         tip.textContent = message;
         tip.style.background = type === 'error' ? 'rgba(231,76,60,0.95)' : 'rgba(74,144,226,0.95)';
-        tip.style.color = '#fff';
+        
+        // 根据面板状态调整位置
+        const panel = document.getElementById('filterPanel');
+        const isPanelVisible = panel && panel.style.right === '0px';
+        tip.style.right = isPanelVisible ? '320px' : '20px'; // 面板打开时偏移
         
         // 显示动画
         tip.style.opacity = '0';
         tip.style.display = '';
         
-        // 使用 requestAnimationFrame 确保过渡效果生效
         requestAnimationFrame(() => {
             tip.style.opacity = '1';
         });
@@ -55,13 +48,27 @@
             tip.style.opacity = '0';
             setTimeout(() => {
                 tip.style.display = 'none';
-            }, 300); // 等待淡出动画完成
+            }, 300);
         }, duration);
     }
 
     // 创建基础样式
     const style = document.createElement('style');
     style.textContent = `
+        #filterTip {
+            position: fixed;
+            right: 20px;  /* 与面板右对齐 */
+            top: 100px;   /* 与面板顶部对齐 */
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            background: rgba(74,144,226,0.95);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+            z-index: 10000;
+            pointer-events: none;
+        }
         #filterPanel {
             position: fixed;
             top: 100px;
@@ -271,9 +278,16 @@
         const panel = document.getElementById('filterPanel');
         const toggleBtn = panel.querySelector('#toggleFilter');
         const isPanelVisible = panel.style.right === '0px';
+        const tip = document.getElementById('filterTip');
 
         panel.style.right = isPanelVisible ? '-300px' : '0';
         toggleBtn.innerHTML = isPanelVisible ? '◀' : '▶';
+        
+        // 更新提示条位置
+        if (tip) {
+            tip.style.right = isPanelVisible ? '20px' : '320px';
+        }
+        
         GM_setValue('panelVisible', !isPanelVisible);
     }
 
