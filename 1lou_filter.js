@@ -1,17 +1,14 @@
 // ==UserScript==
-// @name         BT之家搜索结果过滤器Pro
+// @name         BT之家搜索结果过滤器
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.9.2
-// @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
+// @version      0.9.4
+// @description  为BT之家搜索结果添加关键词过滤功能
 // @author       You
 // @match        *://*.1lou.me/*
 // @match        *://*.btbtt*.com/*
 // @match        *://*.btbtt*.me/*
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @grant        GM_xmlhttpRequest
-// @downloadURL  https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
-// @updateURL    https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
 // ==/UserScript==
 
 (function() {
@@ -170,15 +167,6 @@
             margin-top: 5px;
             text-align: center;
         }
-        .import-export {
-            display: flex;
-            gap: 5px;
-            margin-top: 10px;
-        }
-        .import-export button {
-            flex: 1;
-            font-size: 12px;
-        }
     `;
     document.head.appendChild(style);
 
@@ -218,12 +206,6 @@
             <div class="filter-buttons">
                 <button id="saveFilters" class="filter-button">保存并应用</button>
                 <button id="resetFilters" class="filter-button danger">清空</button>
-                <button id="loadAllPages" class="filter-button">加载全部</button>
-            </div>
-
-            <div class="import-export">
-                <button id="exportFilters" class="filter-button">导出配置</button>
-                <button id="importFilters" class="filter-button">导入配置</button>
             </div>
 
             <div class="stats">
@@ -248,132 +230,6 @@
         addEventListeners(panel);
     }
 
-    // 添加延迟加载全部页面的功能
-    async function loadAllPages() {
-        const loadingTip = document.createElement('div');
-        loadingTip.style.cssText = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 10px 20px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            border-radius: 4px;
-            z-index: 10000;
-        `;
-        document.body.appendChild(loadingTip);
-
-        try {
-            // 获取最后一页的页码
-            const lastPage = document.querySelector('.pagination li:nth-last-child(2) a');
-            if (!lastPage) {
-                loadingTip.textContent = '无法获取总页数';
-                setTimeout(() => loadingTip.remove(), 2000);
-                return;
-            }
-
-            const totalPages = parseInt(lastPage.textContent);
-            const container = document.querySelector('ul.list-unstyled.threadlist');
-            if (!container) return;
-
-            const loadedIds = new Set();
-            const baseUrl = window.location.pathname.replace(/-(\d+\.htm[l]?)$/, '');
-
-            // 记录当前页面帖子ID
-            document.querySelectorAll('.subject.break-all a').forEach(link => {
-                const threadId = link.href.match(/thread-(\d+)\.htm/)?.[1];
-                if (threadId) loadedIds.add(threadId);
-            });
-
-            // 创建一个隐藏的 iframe 并设置必要的属性
-            const iframe = document.createElement('iframe');
-            iframe.style.cssText = 'display:none;';
-            iframe.sandbox = 'allow-same-origin allow-scripts';  // 关键：添加sandbox属性
-            document.body.appendChild(iframe);
-
-            try {
-                for (let page = 2; page <= totalPages; page++) {
-                    loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
-                    const nextPageUrl = `${baseUrl}-${page}.htm`;
-                    
-                    try {
-                        // 使用 Promise 包装 iframe 加载
-                        await new Promise((resolve, reject) => {
-                            const timeoutId = setTimeout(() => reject(new Error('加载超时')), 30000);
-                            
-                            iframe.onload = () => {
-                                clearTimeout(timeoutId);
-                                try {
-                                    if (!iframe.contentWindow || !iframe.contentWindow.document) {
-                                        throw new Error('无法访问iframe内容');
-                                    }
-                                    // 从 iframe 中提取内容
-                                    const items = iframe.contentWindow.document.querySelectorAll('li.media.thread');
-                                    let addedCount = 0;
-
-                                    items.forEach(item => {
-                                        const threadLink = item.querySelector('.subject.break-all a');
-                                        const threadId = threadLink?.href.match(/thread-(\d+)\.htm/)?.[1];
-                                        
-                                        if (threadId && !loadedIds.has(threadId)) {
-                                            loadedIds.add(threadId);
-                                            container.appendChild(item.cloneNode(true));
-                                            addedCount++;
-                                        }
-                                    });
-
-                                    console.log(`第 ${page} 页添加了 ${addedCount} 个帖子`);
-                                    if (addedCount > 0) {
-                                        applyFilters();
-                                    }
-                                    resolve();
-                                } catch (err) {
-                                    reject(err);
-                                }
-                            };
-
-                            iframe.onerror = () => {
-                                clearTimeout(timeoutId);
-                                reject(new Error('iframe加载失败'));
-                            };
-
-                            // 使用相对路径加载页面
-                            iframe.src = nextPageUrl;
-                        });
-
-                        // 增加延迟
-                        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
-
-                    } catch (err) {
-                        console.error(`加载第 ${page} 页时出错:`, err);
-                        loadingTip.textContent = `加载第 ${page} 页失败，15秒后重试...`;
-                        await new Promise(resolve => setTimeout(resolve, 15000));
-                        page--; // 重试当前页
-                        continue;
-                    }
-                }
-
-                // 清理工作
-                iframe.remove();
-                // 移除分页控件
-                const pagination = document.querySelector('.pagination')?.parentNode;
-                if (pagination) pagination.remove();
-
-                loadingTip.textContent = '加载完成!';
-                setTimeout(() => loadingTip.remove(), 2000);
-
-            } catch (err) {
-                console.error('加载过程出错:', err);
-                loadingTip.textContent = '加载出错，请重试';
-                setTimeout(() => loadingTip.remove(), 2000);
-            }
-        } catch (err) {
-            console.error('加载过程出错:', err);
-            loadingTip.textContent = '加载出错，请重试';
-            setTimeout(() => loadingTip.remove(), 2000);
-        }
-    }
-
     function addEventListeners(panel) {
         // 面板切换
         const toggleBtn = panel.querySelector('#toggleFilter');
@@ -381,37 +237,23 @@
             togglePanel();
         });
 
-        // 保存按钮
+        // 功能按钮
         document.getElementById('saveFilters').addEventListener('click', saveFilters);
-
-        // 重置按钮
         document.getElementById('resetFilters').addEventListener('click', resetFilters);
 
-        // 导入导出按钮
-        document.getElementById('exportFilters').addEventListener('click', exportFilters);
-        document.getElementById('importFilters').addEventListener('click', importFilters);
-
-        // 添加加载全部按钮事件
-        document.getElementById('loadAllPages').addEventListener('click', loadAllPages);
-
-        // 关键词输入框快捷键 Ctrl+Enter 直接保存并应用
-        document.getElementById('includeKeywords').addEventListener('keydown', function(e) {
+        // 快捷键
+        document.getElementById('includeKeywords').addEventListener('keydown', e => {
             if (e.ctrlKey && e.key === 'Enter') saveFilters();
         });
-        document.getElementById('excludeKeywords').addEventListener('keydown', function(e) {
+        document.getElementById('excludeKeywords').addEventListener('keydown', e => {
             if (e.ctrlKey && e.key === 'Enter') saveFilters();
         });
 
         // 全局快捷键
-        document.addEventListener('keydown', (e) => {
-            // Ctrl+Shift+F 切换面板
+        document.addEventListener('keydown', e => {
             if(e.ctrlKey && e.shiftKey && e.key === 'F') {
                 e.preventDefault();
                 togglePanel();
-            }
-            // Ctrl+Enter 应用过滤
-            if(e.ctrlKey && e.key === 'Enter') {
-                // 在textarea内已处理，这里不重复应用
             }
         });
     }
@@ -430,10 +272,10 @@
     function saveFilters() {
         const includeKeywords = document.getElementById('includeKeywords').value;
         const excludeKeywords = document.getElementById('excludeKeywords').value;
-        GM_setValue('includeKeywords', includeKeywords);
+        GM_setValue('includeKeywords', includeKeywords); 
         GM_setValue('excludeKeywords', excludeKeywords);
         showTip('过滤规则已保存');
-        applyFilters();
+        applyFilters(); // 直接应用过滤,不刷新页面
     }
 
     function resetFilters() {
@@ -443,47 +285,12 @@
         showTip('已清空所有规则');
     }
 
-    function exportFilters() {
-        const config = {
-            includeKeywords: document.getElementById('includeKeywords').value,
-            excludeKeywords: document.getElementById('excludeKeywords').value
-        };
-        const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'bt-filter-config.json';
-        a.click();
-
-        URL.revokeObjectURL(url);
-        showTip('配置已导出');
-    }
-
-    function importFilters() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const config = JSON.parse(event.target.result);
-                    document.getElementById('includeKeywords').value = config.includeKeywords || '';
-                    document.getElementById('excludeKeywords').value = config.excludeKeywords || '';
-                    saveFilters();
-                    showTip('配置导入成功');
-                } catch (err) {
-                    showTip('配置文件格式错误', 'error');
-                }
-            };
-            reader.readAsText(file);
-        };
-        input.click();
-    }
-
     function applyFilters() {
+        // 暂时移除DOM监听器
+        if (window.pagetualObserver) {
+            window.pagetualObserver.disconnect();
+        }
+
         const includeKeywords = document.getElementById('includeKeywords').value
             .split(/[\n\s,;，；]+/)
             .filter(k => k.trim());
@@ -518,10 +325,10 @@
             const threadItem = item.closest('li.media.thread');
             if (threadItem) {
                 if (hasAllKeywords && !hasExcludeKeyword) {
-                    threadItem.style.display = '';
-                    showCount++;
+                    threadItem.style.display = ''; // 显示
+                    showCount++; 
                 } else {
-                    threadItem.style.display = 'none';
+                    threadItem.style.display = 'none'; // 隐藏
                     hideCount++;
                 }
             }
@@ -530,6 +337,16 @@
         // 更新计数
         document.getElementById('showCount').textContent = showCount;
         document.getElementById('hideCount').textContent = hideCount;
+
+        // 延迟重新绑定DOM监听器
+        setTimeout(() => {
+            if (window.pagetualObserver) {
+                window.pagetualObserver.observe(document.querySelector('.threadlist'), {
+                    childList: true,
+                    subtree: true
+                });
+            }
+        }, 500);
     }
 
     // 自动应用过滤器当页面加载完成
@@ -538,13 +355,9 @@
             createFilterPanel();
             setTimeout(applyFilters, 500);
 
-            // 监听分页变化
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.type === 'childList') {
-                        applyFilters();
-                    }
-                });
+            // 监听DOM变化以重新应用过滤
+            const observer = new MutationObserver(() => {
+                applyFilters();
             });
 
             observer.observe(document.querySelector('.threadlist'), {
@@ -561,4 +374,18 @@
         initializeFilter();
     }
 
+    // 在脚本开头检查是否已加载东方永夜机
+    function checkPagetual() {
+        if (window.pagetual) {
+            console.log('检测到东方永夜机已加载');
+            // 可以在这里适配一些特殊处理
+        }
+    }
+
+    // 在初始化时调用
+    if(document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', checkPagetual);
+    } else {
+        checkPagetual();
+    }
 })();
