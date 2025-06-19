@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.2
+// @version      0.7.3
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -303,6 +303,8 @@
                         container.appendChild(clone);
                     });
 
+                    // 每加载一页就应用一次过滤规则
+                    applyFilters();
                 } catch (err) {
                     console.error(`加载第 ${page} 页时出错:`, err);
                     loadingTip.textContent = `加载第 ${page} 页失败，正在继续...`;
@@ -314,8 +316,10 @@
             const pagination = document.querySelector('.pagination');
             if (pagination) pagination.remove();
 
-            // 重新应用过滤器
-            applyFilters();
+            // 再次应用过滤规则以确保所有内容都被正确过滤
+            setTimeout(() => {
+                applyFilters();
+            }, 100);
 
             loadingTip.textContent = '加载完成!';
             setTimeout(() => loadingTip.remove(), 2000);
@@ -439,47 +443,52 @@
         input.click();
     }
 
+    // 优化 applyFilters 函数的性能
     function applyFilters() {
-        const includeKeywords = document.getElementById('includeKeywords').value.split(/[\n\s,;，；]+/).filter(k => k.trim());
-        const excludeKeywords = document.getElementById('excludeKeywords').value.split(/[\n\s,;，；]+/).filter(k => k.trim());
+        const includeKeywords = document.getElementById('includeKeywords').value
+            .split(/[\n\s,;，；]+/)
+            .filter(k => k.trim());
+        const excludeKeywords = document.getElementById('excludeKeywords').value
+            .split(/[\n\s,;，；]+/)
+            .filter(k => k.trim());
+        
         let showCount = 0;
         let hideCount = 0;
 
-        // 同时支持新旧版页面的选择器
+        // 预编译正则表达式以提升性能
+        const includeRegexps = includeKeywords.map(k => {
+            try {
+                return new RegExp(k.trim(), 'i');
+            } catch(e) {
+                return k.toLowerCase().trim();
+            }
+        });
+
+        const excludeRegexps = excludeKeywords.map(k => {
+            try {
+                return new RegExp(k.trim(), 'i');
+            } catch(e) {
+                return k.toLowerCase().trim();
+            }
+        });
+
+        // 获取所有项目（包括新加载的）
         const items = document.querySelectorAll('li.media.thread, .media.thread');
 
         items.forEach(item => {
             const title = item.querySelector('.subject a, a.subject')?.textContent || '';
-            
+            const normalizedTitle = title.toLowerCase();
+
             // 检查必需关键词
-            const hasIncludeKeyword = includeKeywords.length === 0 || includeKeywords.some(keyword => {
-                if (!keyword.trim()) return false;
-                try {
-                    const regex = new RegExp(keyword.trim(), 'i');
-                    return regex.test(title);
-                } catch(e) {
-                    const normalizedTitle = title.toLowerCase();
-                    const normalizedKeyword = keyword.toLowerCase().trim();
-                    return normalizedTitle.includes(normalizedKeyword);
-                }
+            const hasIncludeKeyword = includeKeywords.length === 0 || includeRegexps.some(r => {
+                return r instanceof RegExp ? r.test(title) : normalizedTitle.includes(r);
             });
 
             // 检查排除关键词
-            const hasExcludeKeyword = excludeKeywords.some(keyword => {
-                if (!keyword.trim()) return false; // 跳过空关键词
-                try {
-                    const regex = new RegExp(keyword.trim(), 'i');
-                    return regex.test(title);
-                } catch(e) {
-                    const normalizedTitle = title.toLowerCase();
-                    const normalizedKeyword = keyword.toLowerCase().trim();
-                    return normalizedTitle.includes(normalizedKeyword);
-                }
+            const hasExcludeKeyword = excludeRegexps.some(r => {
+                return r instanceof RegExp ? r.test(title) : normalizedTitle.includes(r);
             });
 
-            // 判断显示条件：
-            // 1. 如果有必需关键词，则必须匹配其中之一
-            // 2. 同时不能包含任何排除关键词
             if ((includeKeywords.length === 0 || hasIncludeKeyword) && !hasExcludeKeyword) {
                 item.style.display = '';
                 item.classList.remove('filtered-item');
@@ -491,6 +500,7 @@
             }
         });
 
+        // 更新计数
         document.getElementById('showCount').textContent = showCount;
         document.getElementById('hideCount').textContent = hideCount;
     }
