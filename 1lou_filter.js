@@ -285,73 +285,88 @@
                 if (threadId) loadedIds.add(threadId);
             });
 
-            for (let page = 2; page <= totalPages; page++) {
-                loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
-                const nextPageUrl = `${baseUrl}-${page}.htm`;
-                console.log('加载页面:', nextPageUrl);
+            // 创建一个隐藏的 iframe 并设置必要的属性
+            const iframe = document.createElement('iframe');
+            iframe.style.cssText = 'display:none;';
+            iframe.sandbox = 'allow-same-origin allow-scripts';  // 关键：添加sandbox属性
+            document.body.appendChild(iframe);
 
-                // 增加延迟避免请求过快
-                await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
+            try {
+                for (let page = 2; page <= totalPages; page++) {
+                    loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
+                    const nextPageUrl = `${baseUrl}-${page}.htm`;
+                    
+                    try {
+                        // 使用 Promise 包装 iframe 加载
+                        await new Promise((resolve, reject) => {
+                            const timeoutId = setTimeout(() => reject(new Error('加载超时')), 30000);
+                            
+                            iframe.onload = () => {
+                                clearTimeout(timeoutId);
+                                try {
+                                    if (!iframe.contentWindow || !iframe.contentWindow.document) {
+                                        throw new Error('无法访问iframe内容');
+                                    }
+                                    // 从 iframe 中提取内容
+                                    const items = iframe.contentWindow.document.querySelectorAll('li.media.thread');
+                                    let addedCount = 0;
 
-                try {
-                    // 使用 iframe 加载页面
-                    const response = await new Promise((resolve, reject) => {
-                        const iframe = document.createElement('iframe');
-                        iframe.style.display = 'none';
-                        
-                        iframe.onload = () => {
-                            try {
-                                const doc = iframe.contentDocument;
-                                if (!doc) throw new Error('无法访问iframe内容');
-                                resolve(doc);
-                            } catch (err) {
-                                reject(err);
-                            }
-                            setTimeout(() => iframe.remove(), 100);
-                        };
-                        
-                        iframe.onerror = () => reject(new Error('iframe加载失败'));
-                        document.body.appendChild(iframe);
-                        iframe.src = nextPageUrl;
-                    });
+                                    items.forEach(item => {
+                                        const threadLink = item.querySelector('.subject.break-all a');
+                                        const threadId = threadLink?.href.match(/thread-(\d+)\.htm/)?.[1];
+                                        
+                                        if (threadId && !loadedIds.has(threadId)) {
+                                            loadedIds.add(threadId);
+                                            container.appendChild(item.cloneNode(true));
+                                            addedCount++;
+                                        }
+                                    });
 
-                    // 提取内容
-                    const items = response.querySelectorAll('li.media.thread');
-                    let addedCount = 0;
+                                    console.log(`第 ${page} 页添加了 ${addedCount} 个帖子`);
+                                    if (addedCount > 0) {
+                                        applyFilters();
+                                    }
+                                    resolve();
+                                } catch (err) {
+                                    reject(err);
+                                }
+                            };
 
-                    items.forEach(item => {
-                        const threadLink = item.querySelector('.subject.break-all a');
-                        const threadId = threadLink?.href.match(/thread-(\d+)\.htm/)?.[1];
-                        
-                        if (threadId && !loadedIds.has(threadId)) {
-                            loadedIds.add(threadId);
-                            const clone = item.cloneNode(true);
-                            container.appendChild(clone);
-                            addedCount++;
-                        }
-                    });
+                            iframe.onerror = () => {
+                                clearTimeout(timeoutId);
+                                reject(new Error('iframe加载失败'));
+                            };
 
-                    console.log(`第 ${page} 页添加了 ${addedCount} 个帖子`);
-                    if (addedCount > 0) {
-                        applyFilters();
+                            // 使用相对路径加载页面
+                            iframe.src = nextPageUrl;
+                        });
+
+                        // 增加延迟
+                        await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+
+                    } catch (err) {
+                        console.error(`加载第 ${page} 页时出错:`, err);
+                        loadingTip.textContent = `加载第 ${page} 页失败，15秒后重试...`;
+                        await new Promise(resolve => setTimeout(resolve, 15000));
+                        page--; // 重试当前页
+                        continue;
                     }
-
-                } catch (err) {
-                    console.error(`加载第 ${page} 页时出错:`, err);
-                    loadingTip.textContent = `加载第 ${page} 页失败，10秒后重试...`;
-                    await new Promise(resolve => setTimeout(resolve, 10000));
-                    page--; // 重试当前页
-                    continue;
                 }
+
+                // 清理工作
+                iframe.remove();
+                // 移除分页控件
+                const pagination = document.querySelector('.pagination')?.parentNode;
+                if (pagination) pagination.remove();
+
+                loadingTip.textContent = '加载完成!';
+                setTimeout(() => loadingTip.remove(), 2000);
+
+            } catch (err) {
+                console.error('加载过程出错:', err);
+                loadingTip.textContent = '加载出错，请重试';
+                setTimeout(() => loadingTip.remove(), 2000);
             }
-
-            // 移除分页控件
-            const pagination = document.querySelector('.pagination')?.parentNode;
-            if (pagination) pagination.remove();
-
-            loadingTip.textContent = '加载完成!';
-            setTimeout(() => loadingTip.remove(), 2000);
-
         } catch (err) {
             console.error('加载过程出错:', err);
             loadingTip.textContent = '加载出错，请重试';
