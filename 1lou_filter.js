@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.8.7
+// @version      0.8.9
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -296,32 +296,35 @@
                 await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
 
                 try {
-                    // 使用 GM_xmlhttpRequest 代替 fetch
+                    // 使用 GM_xmlhttpRequest 跨域请求
                     const response = await new Promise((resolve, reject) => {
                         GM_xmlhttpRequest({
-                            method: 'GET',
+                            method: "GET",
                             url: nextPageUrl,
                             headers: {
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                                'Accept-Language': 'zh-CN,zh;q=0.8,en;q=0.6',
-                                'Cache-Control': 'no-cache',
-                                'Referer': window.location.origin + '/',
-                                'User-Agent': window.navigator.userAgent
+                                "Accept": "text/html,application/xhtml+xml,application/xml",
+                                "Cache-Control": "no-cache",
+                                "Host": location.host,
+                                "Referer": location.href,
+                                "Cookie": document.cookie
                             },
-                            timeout: 10000,
+                            timeout: 20000,
+                            anonymous: true,
                             onload: resolve,
                             onerror: reject,
+                            onabort: reject,
                             ontimeout: reject
                         });
                     });
 
                     if (response.status !== 200) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error(`加载失败: ${response.status}`);
                     }
 
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(response.responseText, 'text/html');
 
+                    // 提取新页面内容 
                     const items = doc.querySelectorAll('li.media.thread');
                     let addedCount = 0;
 
