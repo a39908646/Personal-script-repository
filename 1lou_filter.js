@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.6.9
+// @version      0.7.0
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -353,18 +353,20 @@
     }
 
     function applyFilters() {
-        const includeKeywords = document.getElementById('includeKeywords').value.split('\n').filter(k => k.trim());
-        const excludeKeywords = document.getElementById('excludeKeywords').value.split('\n').filter(k => k.trim());
+        const includeKeywords = document.getElementById('includeKeywords').value.split(/[\n\s,;，；]+/).filter(k => k.trim());
+        const excludeKeywords = document.getElementById('excludeKeywords').value.split(/[\n\s,;，；]+/).filter(k => k.trim());
         let showCount = 0;
         let hideCount = 0;
-        const items = document.querySelectorAll('li.media.thread');
+
+        // 同时支持新旧版页面的选择器
+        const items = document.querySelectorAll('li.media.thread, .media.thread');
 
         items.forEach(item => {
-            const title = item.querySelector('.subject a').textContent;
+            const title = item.querySelector('.subject a, a.subject')?.textContent || '';
             
-            // 检查必需关键词 - 修复逻辑
+            // 检查必需关键词
             const hasIncludeKeyword = includeKeywords.length === 0 || includeKeywords.some(keyword => {
-                if (!keyword.trim()) return false; // 跳过空关键词
+                if (!keyword.trim()) return false;
                 try {
                     const regex = new RegExp(keyword.trim(), 'i');
                     return regex.test(title);
