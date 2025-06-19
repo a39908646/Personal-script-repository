@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.8.3
+// @version      0.8.5
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -263,57 +263,44 @@
         document.body.appendChild(loadingTip);
 
         try {
-            // 获取总页数
-            const paginationText = document.querySelector('.pagination').textContent;
-            const totalPagesMatch = paginationText.match(/共(\d+)页/);
-            if (!totalPagesMatch) {
+            // 获取最后一页的页码
+            const lastPage = document.querySelector('.pagination li:nth-last-child(2) a');
+            if (!lastPage) {
                 loadingTip.textContent = '无法获取总页数';
                 setTimeout(() => loadingTip.remove(), 2000);
                 return;
             }
 
-            const totalPages = parseInt(totalPagesMatch[1]);
-            const container = document.querySelector('ul.threadlist');
-            const loadBtn = document.getElementById('loadAllPages');
-            
-            if (!container || !loadBtn) return;
+            const totalPages = parseInt(lastPage.textContent);
+            const container = document.querySelector('ul.list-unstyled.threadlist');
+            if (!container) return;
 
-            loadBtn.disabled = true;
-            loadBtn.textContent = '加载中...';
-
+            // 基础URL部分
+            const baseUrl = window.location.href.split('-1.htm')[0];
             const loadedIds = new Set();
-            
+
             // 记录当前页面帖子ID
             document.querySelectorAll('.subject.break-all a').forEach(link => {
                 const threadId = link.href.match(/thread-(\d+)\.htm/)?.[1];
                 if (threadId) loadedIds.add(threadId);
             });
 
-            // 获取当前搜索关键词
-            const searchParams = new URLSearchParams(window.location.search);
-            const keyword = searchParams.get('keyword');
-            
             for (let page = 2; page <= totalPages; page++) {
                 loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
                 
-                // 构建搜索URL
-                const nextPageUrl = `search.htm?keyword=${encodeURIComponent(keyword)}&page=${page}`;
+                const nextPageUrl = `${baseUrl}-${page}.htm`;
                 console.log('加载页面:', nextPageUrl);
 
-                // 添加延迟避免请求过快
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
                 try {
                     const response = await fetch(nextPageUrl);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     
                     const text = await response.text();
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(text, 'text/html');
 
-                    // 获取新页面的帖子列表
                     const items = doc.querySelectorAll('li.media.thread');
                     let addedCount = 0;
 
@@ -340,7 +327,7 @@
             }
 
             // 移除分页控件
-            const pagination = document.querySelector('.pagination');
+            const pagination = document.querySelector('.pagination')?.parentNode;
             if (pagination) pagination.remove();
 
             loadingTip.textContent = '加载完成!';
@@ -350,9 +337,6 @@
             console.error('加载过程出错:', err);
             loadingTip.textContent = '加载出错，请重试';
             setTimeout(() => loadingTip.remove(), 2000);
-        } finally {
-            loadBtn.textContent = '已加载全部';
-            loadBtn.disabled = false;
         }
     }
 
