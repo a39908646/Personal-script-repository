@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.7
+// @version      0.7.9
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -452,33 +452,40 @@
         let showCount = 0;
         let hideCount = 0;
 
-        // 使用正确的选择器
-        const items = document.querySelectorAll('ul.list-unstyled.threadlist > li.media.thread');
+        // 获取所有主题项
+        const items = document.querySelectorAll('.subject.break-all');
 
         items.forEach(item => {
-            // 直接获取标题文本
-            const title = item.querySelector('.subject.break-all a')?.textContent || '';
-            const normalizedTitle = title.toLowerCase();
+            // 获取完整的文本内容，包括span中的文本
+            const allText = item.textContent || item.innerText || '';
+            const normalizedText = allText.toLowerCase();
 
-            // 检查必需关键词
-            const hasIncludeKeyword = includeKeywords.length === 0 || includeKeywords.some(keyword => {
-                return normalizedTitle.includes(keyword.toLowerCase());
+            // 正向过滤：必须包含所有指定关键词
+            const hasAllKeywords = includeKeywords.length === 0 || includeKeywords.every(keyword => {
+                const normalizedKeyword = keyword.toLowerCase().trim();
+                return normalizedText.includes(normalizedKeyword);
             });
 
-            // 检查排除关键词
+            // 反向过滤：不能包含任何排除关键词
             const hasExcludeKeyword = excludeKeywords.some(keyword => {
-                return normalizedTitle.includes(keyword.toLowerCase());
+                const normalizedKeyword = keyword.toLowerCase().trim();
+                return normalizedText.includes(normalizedKeyword);
             });
 
-            if ((includeKeywords.length === 0 || hasIncludeKeyword) && !hasExcludeKeyword) {
-                item.style.display = '';
-                showCount++;
-            } else {
-                item.style.display = 'none';
-                hideCount++;
+            // 获取要隐藏的父元素
+            const threadItem = item.closest('li.media.thread');
+            if (threadItem) {
+                if (hasAllKeywords && !hasExcludeKeyword) {
+                    threadItem.style.display = '';
+                    showCount++;
+                } else {
+                    threadItem.style.display = 'none';
+                    hideCount++;
+                }
             }
         });
 
+        // 更新计数
         document.getElementById('showCount').textContent = showCount;
         document.getElementById('hideCount').textContent = hideCount;
     }
