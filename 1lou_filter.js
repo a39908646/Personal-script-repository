@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.0
+// @version      0.7.1
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
 // @author       You
 // @match        *://*.1lou.me/*
@@ -9,8 +9,8 @@
 // @match        *://*.btbtt*.me/*
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @downloadURL  https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter
-// @updateURL    https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter
+// @downloadURL  https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
+// @updateURL    https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
 // ==/UserScript==
 
 (function() {
