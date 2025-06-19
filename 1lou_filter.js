@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.9.1
+// @version      0.9.2
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -264,12 +264,8 @@
         document.body.appendChild(loadingTip);
 
         try {
-            // 修改获取分页信息的方式
-            const paginationItems = document.querySelectorAll('.pagination li');
-            const lastPage = Array.from(paginationItems)
-                .filter(item => /^\d+$/.test(item.textContent.trim()))
-                .pop();
-                
+            // 获取最后一页的页码
+            const lastPage = document.querySelector('.pagination li:nth-last-child(2) a');
             if (!lastPage) {
                 loadingTip.textContent = '无法获取总页数';
                 setTimeout(() => loadingTip.remove(), 2000);
@@ -291,51 +287,36 @@
 
             for (let page = 2; page <= totalPages; page++) {
                 loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
-                
                 const nextPageUrl = `${baseUrl}-${page}.htm`;
                 console.log('加载页面:', nextPageUrl);
 
-                // 增加延迟到 5-8 秒
-                await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 3000));
+                // 增加延迟避免请求过快
+                await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
 
                 try {
+                    // 使用 iframe 加载页面
                     const response = await new Promise((resolve, reject) => {
-                        GM_xmlhttpRequest({
-                            method: "GET",
-                            url: nextPageUrl,
-                            timeout: 30000,
-                            anonymous: false,  // 不使用匿名模式
-                            withCredentials: true,  // 携带 cookies
-                            headers: {
-                                "User-Agent": window.navigator.userAgent,
-                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                                "Cache-Control": "no-cache",
-                                "Pragma": "no-cache",
-                                "Referer": document.location.href,
-                                "Origin": window.location.origin,
-                                "Sec-Fetch-Dest": "document",
-                                "Sec-Fetch-Mode": "navigate",
-                                "Sec-Fetch-Site": "same-origin",
-                                "Upgrade-Insecure-Requests": "1"
-                            },
-                            onload: function(response) {
-                                if (response.status === 200) {
-                                    resolve(response);
-                                } else {
-                                    reject(new Error(`HTTP ${response.status}`));
-                                }
-                            },
-                            onerror: reject,
-                            ontimeout: reject
-                        });
+                        const iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
+                        
+                        iframe.onload = () => {
+                            try {
+                                const doc = iframe.contentDocument;
+                                if (!doc) throw new Error('无法访问iframe内容');
+                                resolve(doc);
+                            } catch (err) {
+                                reject(err);
+                            }
+                            setTimeout(() => iframe.remove(), 100);
+                        };
+                        
+                        iframe.onerror = () => reject(new Error('iframe加载失败'));
+                        document.body.appendChild(iframe);
+                        iframe.src = nextPageUrl;
                     });
 
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(response.responseText, 'text/html');
-
-                    // 简化内容提取逻辑
-                    const items = doc.querySelectorAll('li.media.thread');
+                    // 提取内容
+                    const items = response.querySelectorAll('li.media.thread');
                     let addedCount = 0;
 
                     items.forEach(item => {
@@ -344,7 +325,8 @@
                         
                         if (threadId && !loadedIds.has(threadId)) {
                             loadedIds.add(threadId);
-                            container.appendChild(item.cloneNode(true));
+                            const clone = item.cloneNode(true);
+                            container.appendChild(clone);
                             addedCount++;
                         }
                     });
