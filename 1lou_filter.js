@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.9.0
+// @version      0.9.1
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -295,20 +295,29 @@
                 const nextPageUrl = `${baseUrl}-${page}.htm`;
                 console.log('加载页面:', nextPageUrl);
 
-                // 延迟时间增加到 3-6 秒
-                await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000));
+                // 增加延迟到 5-8 秒
+                await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 3000));
 
                 try {
-                    // 使用 GM_xmlhttpRequest 的简化配置
                     const response = await new Promise((resolve, reject) => {
                         GM_xmlhttpRequest({
                             method: "GET",
                             url: nextPageUrl,
                             timeout: 30000,
+                            anonymous: false,  // 不使用匿名模式
+                            withCredentials: true,  // 携带 cookies
                             headers: {
                                 "User-Agent": window.navigator.userAgent,
-                                "Accept": "text/html,application/xhtml+xml,application/xml",
-                                "Referer": document.location.href
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                                "Cache-Control": "no-cache",
+                                "Pragma": "no-cache",
+                                "Referer": document.location.href,
+                                "Origin": window.location.origin,
+                                "Sec-Fetch-Dest": "document",
+                                "Sec-Fetch-Mode": "navigate",
+                                "Sec-Fetch-Site": "same-origin",
+                                "Upgrade-Insecure-Requests": "1"
                             },
                             onload: function(response) {
                                 if (response.status === 200) {
@@ -347,8 +356,8 @@
 
                 } catch (err) {
                     console.error(`加载第 ${page} 页时出错:`, err);
-                    loadingTip.textContent = `加载第 ${page} 页失败，5秒后重试...`;
-                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    loadingTip.textContent = `加载第 ${page} 页失败，10秒后重试...`;
+                    await new Promise(resolve => setTimeout(resolve, 10000));
                     page--; // 重试当前页
                     continue;
                 }
