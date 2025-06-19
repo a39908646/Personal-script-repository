@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.3
+// @version      0.7.4
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -297,13 +297,13 @@
                     const doc = parser.parseFromString(text, 'text/html');
 
                     // 提取内容并添加到当前页面
-                    const items = doc.querySelectorAll('.threadlist li');
+                    const items = doc.querySelectorAll('.threadlist .media.thread');
                     items.forEach(item => {
                         const clone = item.cloneNode(true);
                         container.appendChild(clone);
                     });
 
-                    // 每加载一页就应用一次过滤规则
+                    // 立即应用过滤
                     applyFilters();
                 } catch (err) {
                     console.error(`加载第 ${page} 页时出错:`, err);
@@ -316,10 +316,8 @@
             const pagination = document.querySelector('.pagination');
             if (pagination) pagination.remove();
 
-            // 再次应用过滤规则以确保所有内容都被正确过滤
-            setTimeout(() => {
-                applyFilters();
-            }, 100);
+            // 确保所有内容都被过滤
+            setTimeout(applyFilters, 100);
 
             loadingTip.textContent = '加载完成!';
             setTimeout(() => loadingTip.remove(), 2000);
@@ -472,11 +470,12 @@
             }
         });
 
-        // 获取所有项目（包括新加载的）
-        const items = document.querySelectorAll('li.media.thread, .media.thread');
+        // 修改选择器以匹配网站的 DOM 结构
+        const items = document.querySelectorAll('.threadlist .media.thread');
 
         items.forEach(item => {
-            const title = item.querySelector('.subject a, a.subject')?.textContent || '';
+            // 修改标题选择器以匹配网站的实际结构
+            const title = item.querySelector('.subject.break-all a')?.textContent || '';
             const normalizedTitle = title.toLowerCase();
 
             // 检查必需关键词
@@ -489,6 +488,7 @@
                 return r instanceof RegExp ? r.test(title) : normalizedTitle.includes(r);
             });
 
+            // 更新显示/隐藏状态
             if ((includeKeywords.length === 0 || hasIncludeKeyword) && !hasExcludeKeyword) {
                 item.style.display = '';
                 item.classList.remove('filtered-item');
