@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.4
+// @version      0.7.6
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -441,7 +441,6 @@
         input.click();
     }
 
-    // 优化 applyFilters 函数的性能
     function applyFilters() {
         const includeKeywords = document.getElementById('includeKeywords').value
             .split(/[\n\s,;，；]+/)
@@ -453,7 +452,7 @@
         let showCount = 0;
         let hideCount = 0;
 
-        // 预编译正则表达式以提升性能
+        // 预编译正则表达式
         const includeRegexps = includeKeywords.map(k => {
             try {
                 return new RegExp(k.trim(), 'i');
@@ -470,17 +469,22 @@
             }
         });
 
-        // 修改选择器以匹配网站的 DOM 结构
-        const items = document.querySelectorAll('.threadlist .media.thread');
+        // 根据实际DOM结构更新选择器
+        const items = document.querySelectorAll('.list-unstyled.threadlist li.media.thread');
 
         items.forEach(item => {
-            // 修改标题选择器以匹配网站的实际结构
-            const title = item.querySelector('.subject.break-all a')?.textContent || '';
+            // 修改为正确的标题选择器
+            const titleLink = item.querySelector('.media-body .subject.break-all a');
+            const title = titleLink?.textContent || '';
             const normalizedTitle = title.toLowerCase();
+
+            console.log('检查标题:', title); // 调试用
 
             // 检查必需关键词
             const hasIncludeKeyword = includeKeywords.length === 0 || includeRegexps.some(r => {
-                return r instanceof RegExp ? r.test(title) : normalizedTitle.includes(r);
+                const matches = r instanceof RegExp ? r.test(title) : normalizedTitle.includes(r);
+                console.log(`关键词 ${r} 匹配结果:`, matches); // 调试用
+                return matches;
             });
 
             // 检查排除关键词
