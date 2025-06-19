@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.8.1
+// @version      0.8.2
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -247,72 +247,6 @@
         addEventListeners(panel);
     }
 
-    // 创建过滤设置面板
-    function createFilterPanel() {
-        const panel = document.createElement('div');
-        panel.id = 'filterPanel';
-
-        // 获取面板状态
-        const isPanelVisible = GM_getValue('panelVisible', false);
-
-        // 获取保存的关键词
-        const includeKeywords = GM_getValue('includeKeywords', '2160p\n4K\nHDR\n');
-        const excludeKeywords = GM_getValue('excludeKeywords', '国语配音\n合集');
-
-        panel.innerHTML = `
-            <div id="toggleFilter">◀</div>
-            <div class="panel-header">
-                <span class="panel-title">结果过滤器</span>
-                <div id="filterTip"></div>
-            </div>
-
-            <div class="filter-section">
-                <h4>必须包含以下关键词</h4>
-                <small style="color: #666;">每行一个关键词，支持正则表达式</small>
-                <textarea id="includeKeywords" class="filter-textarea"
-                    placeholder="输入必须包含的关键词...">${includeKeywords}</textarea>
-            </div>
-
-            <div class="filter-section">
-                <h4>排除以下关键词</h4>
-                <small style="color: #666;">每行一个关键词，支持正则表达式</small>
-                <textarea id="excludeKeywords" class="filter-textarea"
-                    placeholder="输入要排除的关键词...">${excludeKeywords}</textarea>
-            </div>
-
-            <div class="filter-buttons">
-                <button id="saveFilters" class="filter-button">保存并应用</button>
-                <button id="resetFilters" class="filter-button danger">清空</button>
-                <button id="loadAllPages" class="filter-button">加载全部</button>
-            </div>
-
-            <div class="import-export">
-                <button id="exportFilters" class="filter-button">导出配置</button>
-                <button id="importFilters" class="filter-button">导入配置</button>
-            </div>
-
-            <div class="stats">
-                <span>显示: <b id="showCount">0</b> 条</span>
-                <span style="margin-left: 10px;">隐藏: <b id="hideCount">0</b> 条</span>
-            </div>
-
-            <div class="shortcut-tip">
-                快捷键: Ctrl+Shift+F (开关面板) | Ctrl+Enter (保存并应用)
-            </div>
-        `;
-
-        document.body.appendChild(panel);
-
-        // 设置初始状态
-        if(isPanelVisible) {
-            panel.style.right = '0';
-            panel.querySelector('#toggleFilter').innerHTML = '▶';
-        }
-
-        // 添加事件监听器
-        addEventListeners(panel);
-    }
-
     // 添加延迟加载全部页面的功能
     async function loadAllPages() {
         const loadingTip = document.createElement('div');
@@ -346,49 +280,54 @@
         loadBtn.textContent = '加载中...';
 
         try {
-            const loadedIds = new Set(); // 用于记录已加载的帖子ID
+            const loadedIds = new Set();
             
-            // 先记录当前页面的所有帖子ID
+            // 记录当前页面帖子ID
             document.querySelectorAll('.subject.break-all a').forEach(link => {
                 const threadId = link.href.match(/thread-(\d+)\.htm/)?.[1];
-                if (threadId) {
-                    loadedIds.add(threadId);
-                }
+                if (threadId) loadedIds.add(threadId);
             });
+            
+            // 获取当前URL的基础部分
+            const baseUrl = window.location.href.replace(/(-\d+)?\.htm[l]?$/, '');
             
             for (let page = 2; page <= totalPages; page++) {
                 loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
                 
-                // 构建下一页URL
-                const currentUrl = window.location.href;
-                const nextPageUrl = currentUrl.replace(/-(\d+)\.htm$/, `-${page}.htm`);
+                // 构建正确的分页URL
+                const nextPageUrl = `${baseUrl}-${page}.htm`;
+                console.log('加载页面:', nextPageUrl); // 调试用
 
-                // 延迟加载，避免请求过快
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
                 try {
                     const response = await fetch(nextPageUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
                     const text = await response.text();
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(text, 'text/html');
 
-                    // 提取内容并添加到当前页面，同时检查重复
+                    // 获取新页面的帖子列表
                     const items = doc.querySelectorAll('li.media.thread');
+                    let addedCount = 0;
+
                     items.forEach(item => {
-                        // 获取帖子ID
                         const threadLink = item.querySelector('.subject.break-all a');
                         const threadId = threadLink?.href.match(/thread-(\d+)\.htm/)?.[1];
                         
-                        // 如果这个ID已经存在，就跳过
                         if (threadId && !loadedIds.has(threadId)) {
                             loadedIds.add(threadId);
                             const clone = item.cloneNode(true);
                             container.appendChild(clone);
+                            addedCount++;
                         }
                     });
 
-                    // 立即应用过滤
+                    console.log(`第 ${page} 页添加了 ${addedCount} 个帖子`); // 调试用
                     applyFilters();
+
                 } catch (err) {
                     console.error(`加载第 ${page} 页时出错:`, err);
                     loadingTip.textContent = `加载第 ${page} 页失败，正在继续...`;
@@ -400,7 +339,6 @@
             const pagination = document.querySelector('.pagination');
             if (pagination) pagination.remove();
 
-            // 确保所有内容都被过滤
             setTimeout(applyFilters, 100);
 
             loadingTip.textContent = '加载完成!';
