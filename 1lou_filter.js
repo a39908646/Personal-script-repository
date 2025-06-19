@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.8.9
+// @version      0.9.0
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -264,8 +264,12 @@
         document.body.appendChild(loadingTip);
 
         try {
-            // 获取最后一页的页码
-            const lastPage = document.querySelector('.pagination li:nth-last-child(2) a');
+            // 修改获取分页信息的方式
+            const paginationItems = document.querySelectorAll('.pagination li');
+            const lastPage = Array.from(paginationItems)
+                .filter(item => /^\d+$/.test(item.textContent.trim()))
+                .pop();
+                
             if (!lastPage) {
                 loadingTip.textContent = '无法获取总页数';
                 setTimeout(() => loadingTip.remove(), 2000);
@@ -276,9 +280,8 @@
             const container = document.querySelector('ul.list-unstyled.threadlist');
             if (!container) return;
 
-            // 基础URL部分
-            const baseUrl = window.location.href.split('-1.htm')[0];
             const loadedIds = new Set();
+            const baseUrl = window.location.pathname.replace(/-(\d+\.htm[l]?)$/, '');
 
             // 记录当前页面帖子ID
             document.querySelectorAll('.subject.break-all a').forEach(link => {
@@ -292,39 +295,37 @@
                 const nextPageUrl = `${baseUrl}-${page}.htm`;
                 console.log('加载页面:', nextPageUrl);
 
-                // 增加随机延迟 2-5 秒
-                await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+                // 延迟时间增加到 3-6 秒
+                await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 3000));
 
                 try {
-                    // 使用 GM_xmlhttpRequest 跨域请求
+                    // 使用 GM_xmlhttpRequest 的简化配置
                     const response = await new Promise((resolve, reject) => {
                         GM_xmlhttpRequest({
                             method: "GET",
                             url: nextPageUrl,
+                            timeout: 30000,
                             headers: {
+                                "User-Agent": window.navigator.userAgent,
                                 "Accept": "text/html,application/xhtml+xml,application/xml",
-                                "Cache-Control": "no-cache",
-                                "Host": location.host,
-                                "Referer": location.href,
-                                "Cookie": document.cookie
+                                "Referer": document.location.href
                             },
-                            timeout: 20000,
-                            anonymous: true,
-                            onload: resolve,
+                            onload: function(response) {
+                                if (response.status === 200) {
+                                    resolve(response);
+                                } else {
+                                    reject(new Error(`HTTP ${response.status}`));
+                                }
+                            },
                             onerror: reject,
-                            onabort: reject,
                             ontimeout: reject
                         });
                     });
 
-                    if (response.status !== 200) {
-                        throw new Error(`加载失败: ${response.status}`);
-                    }
-
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                    // 提取新页面内容 
+                    // 简化内容提取逻辑
                     const items = doc.querySelectorAll('li.media.thread');
                     let addedCount = 0;
 
@@ -334,19 +335,22 @@
                         
                         if (threadId && !loadedIds.has(threadId)) {
                             loadedIds.add(threadId);
-                            const clone = item.cloneNode(true);
-                            container.appendChild(clone);
+                            container.appendChild(item.cloneNode(true));
                             addedCount++;
                         }
                     });
 
                     console.log(`第 ${page} 页添加了 ${addedCount} 个帖子`);
-                    applyFilters();
+                    if (addedCount > 0) {
+                        applyFilters();
+                    }
 
                 } catch (err) {
                     console.error(`加载第 ${page} 页时出错:`, err);
-                    loadingTip.textContent = `加载第 ${page} 页失败，正在继续...`;
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    loadingTip.textContent = `加载第 ${page} 页失败，5秒后重试...`;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    page--; // 重试当前页
+                    continue;
                 }
             }
 
