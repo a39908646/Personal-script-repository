@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.1
-// @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠
+// @version      0.7.2
+// @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
 // @match        *://*.btbtt*.com/*
@@ -217,6 +217,7 @@
             <div class="filter-buttons">
                 <button id="saveFilters" class="filter-button">保存并应用</button>
                 <button id="resetFilters" class="filter-button danger">清空</button>
+                <button id="loadAllPages" class="filter-button">加载全部</button>
             </div>
 
             <div class="import-export">
@@ -246,6 +247,89 @@
         addEventListeners(panel);
     }
 
+    // 添加延迟加载全部页面的功能
+    async function loadAllPages() {
+        const loadingTip = document.createElement('div');
+        loadingTip.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            border-radius: 4px;
+            z-index: 10000;
+        `;
+        document.body.appendChild(loadingTip);
+
+        // 获取总页数
+        const lastPage = document.querySelector('.pagination li:nth-last-child(2)');
+        if (!lastPage) {
+            loadingTip.textContent = '无法获取总页数';
+            setTimeout(() => loadingTip.remove(), 2000);
+            return;
+        }
+
+        const totalPages = parseInt(lastPage.textContent);
+        const container = document.querySelector('.threadlist');
+        const loadBtn = document.getElementById('loadAllPages');
+        
+        if (!container || !loadBtn) return;
+
+        loadBtn.disabled = true;
+        loadBtn.textContent = '加载中...';
+
+        try {
+            for (let page = 2; page <= totalPages; page++) {
+                loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
+                
+                // 构建下一页URL
+                const currentUrl = window.location.href;
+                const nextPageUrl = currentUrl.replace(/-(\d+)\.htm$/, `-${page}.htm`);
+
+                // 延迟加载，避免请求过快
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                try {
+                    const response = await fetch(nextPageUrl);
+                    const text = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(text, 'text/html');
+
+                    // 提取内容并添加到当前页面
+                    const items = doc.querySelectorAll('.threadlist li');
+                    items.forEach(item => {
+                        const clone = item.cloneNode(true);
+                        container.appendChild(clone);
+                    });
+
+                } catch (err) {
+                    console.error(`加载第 ${page} 页时出错:`, err);
+                    loadingTip.textContent = `加载第 ${page} 页失败，正在继续...`;
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+
+            // 移除分页控件
+            const pagination = document.querySelector('.pagination');
+            if (pagination) pagination.remove();
+
+            // 重新应用过滤器
+            applyFilters();
+
+            loadingTip.textContent = '加载完成!';
+            setTimeout(() => loadingTip.remove(), 2000);
+
+        } catch (err) {
+            console.error('加载过程出错:', err);
+            loadingTip.textContent = '加载出错，请重试';
+            setTimeout(() => loadingTip.remove(), 2000);
+        } finally {
+            loadBtn.textContent = '已加载全部';
+            loadBtn.disabled = false;
+        }
+    }
+
     function addEventListeners(panel) {
         // 面板切换
         const toggleBtn = panel.querySelector('#toggleFilter');
@@ -262,6 +346,9 @@
         // 导入导出按钮
         document.getElementById('exportFilters').addEventListener('click', exportFilters);
         document.getElementById('importFilters').addEventListener('click', importFilters);
+
+        // 添加加载全部按钮事件
+        document.getElementById('loadAllPages').addEventListener('click', loadAllPages);
 
         // 关键词输入框快捷键 Ctrl+Enter 直接保存并应用
         document.getElementById('includeKeywords').addEventListener('keydown', function(e) {
