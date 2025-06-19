@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.8.5
+// @version      0.8.7
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -9,6 +9,7 @@
 // @match        *://*.btbtt*.me/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
 // @downloadURL  https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
 // @updateURL    https://raw.githubusercontent.com/a39908646/Personal-script-repository/main/1lou_filter.js
 // ==/UserScript==
@@ -291,15 +292,35 @@
                 const nextPageUrl = `${baseUrl}-${page}.htm`;
                 console.log('加载页面:', nextPageUrl);
 
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // 增加随机延迟 2-5 秒
+                await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
 
                 try {
-                    const response = await fetch(nextPageUrl);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    
-                    const text = await response.text();
+                    // 使用 GM_xmlhttpRequest 代替 fetch
+                    const response = await new Promise((resolve, reject) => {
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: nextPageUrl,
+                            headers: {
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                                'Accept-Language': 'zh-CN,zh;q=0.8,en;q=0.6',
+                                'Cache-Control': 'no-cache',
+                                'Referer': window.location.origin + '/',
+                                'User-Agent': window.navigator.userAgent
+                            },
+                            timeout: 10000,
+                            onload: resolve,
+                            onerror: reject,
+                            ontimeout: reject
+                        });
+                    });
+
+                    if (response.status !== 200) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
                     const parser = new DOMParser();
-                    const doc = parser.parseFromString(text, 'text/html');
+                    const doc = parser.parseFromString(response.responseText, 'text/html');
 
                     const items = doc.querySelectorAll('li.media.thread');
                     let addedCount = 0;
