@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家搜索结果过滤器Pro
 // @homepage    https://github.com/a39908646/Personal-script-repository
-// @version      0.7.9
+// @version      0.8.0
 // @description  为BT之家搜索结果添加关键词筛选和屏蔽功能,支持面板折叠和自动加载全部结果
 // @author       You
 // @match        *://*.1lou.me/*
@@ -280,6 +280,8 @@
         loadBtn.textContent = '加载中...';
 
         try {
+            const loadedIds = new Set(); // 用于记录已加载的帖子ID
+            
             for (let page = 2; page <= totalPages; page++) {
                 loadingTip.textContent = `正在加载第 ${page}/${totalPages} 页...`;
                 
@@ -296,11 +298,19 @@
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(text, 'text/html');
 
-                    // 提取内容并添加到当前页面
+                    // 提取内容并添加到当前页面，同时检查重复
                     const items = doc.querySelectorAll('.threadlist .media.thread');
                     items.forEach(item => {
-                        const clone = item.cloneNode(true);
-                        container.appendChild(clone);
+                        // 获取帖子ID
+                        const threadLink = item.querySelector('.subject.break-all a');
+                        const threadId = threadLink?.href.match(/thread-(\d+)\.htm/)?.[1];
+                        
+                        // 如果这个ID已经存在，就跳过
+                        if (threadId && !loadedIds.has(threadId)) {
+                            loadedIds.add(threadId);
+                            const clone = item.cloneNode(true);
+                            container.appendChild(clone);
+                        }
                     });
 
                     // 立即应用过滤
