@@ -29,7 +29,7 @@
     // --- 工具函数 ---
 
     // Debounce函数，用于性能优化
-    function debounce(func, wait) {
+    function debounce(func, wait) {1
         let timeout;
         return function(...args) {
             clearTimeout(timeout);
