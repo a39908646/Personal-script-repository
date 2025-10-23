@@ -38,8 +38,10 @@
 
     function addKeyword(keyword) { if (!keyword || keyword.trim() === '') return false; const keywords = dataManager.getKeywords(); const newKeyword = keyword.trim(); if (!keywords.includes(newKeyword)) { keywords.push(newKeyword); dataManager.saveKeywords(keywords); return true; } return false; }
     function removeKeyword(keyword) { const keywords = dataManager.getKeywords().filter(k => k !== keyword); dataManager.saveKeywords(keywords); }
+    function updateKeyword(oldKeyword, newKeyword) { if (!newKeyword || newKeyword.trim() === '') return false; const trimmedNew = newKeyword.trim(); if (trimmedNew === oldKeyword) return false; const keywords = dataManager.getKeywords(); if (keywords.includes(trimmedNew)) return false; const index = keywords.indexOf(oldKeyword); if (index !== -1) { keywords[index] = trimmedNew; dataManager.saveKeywords(keywords); return true; } return false; }
     function addPositiveKeyword(keyword) { if (!keyword || keyword.trim() === '') return false; const pKeywords = dataManager.getPositiveKeywords(); const newKeyword = keyword.trim(); if (!pKeywords.includes(newKeyword)) { pKeywords.push(newKeyword); dataManager.savePositiveKeywords(pKeywords); return true; } return false; }
     function removePositiveKeyword(keyword) { const pKeywords = dataManager.getPositiveKeywords().filter(k => k !== keyword); dataManager.savePositiveKeywords(pKeywords); }
+    function updatePositiveKeyword(oldKeyword, newKeyword) { if (!newKeyword || newKeyword.trim() === '') return false; const trimmedNew = newKeyword.trim(); if (trimmedNew === oldKeyword) return false; const pKeywords = dataManager.getPositiveKeywords(); if (pKeywords.includes(trimmedNew)) return false; const index = pKeywords.indexOf(oldKeyword); if (index !== -1) { pKeywords[index] = trimmedNew; dataManager.savePositiveKeywords(pKeywords); return true; } return false; }
 
     // --- 导入/导出逻辑 ---
     function exportSettings() {
@@ -120,8 +122,19 @@
             .keyword-list li { padding: 8px 4px 8px 12px; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; }
             .keyword-list li:hover { background-color: #eef2ff; }
             .keyword-text { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-size: 13px; }
-            .remove-keyword-btn { background: none; border: none; cursor: pointer; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: var(--filter-text-secondary); font-size: 20px; font-weight: bold; }
+            .keyword-actions { display: flex; gap: 4px; }
+            .edit-keyword-btn, .remove-keyword-btn { background: none; border: none; cursor: pointer; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: var(--filter-text-secondary); font-size: 16px; font-weight: bold; }
+            .edit-keyword-btn:hover { color: #fff; background-color: var(--filter-primary-color); }
+            .remove-keyword-btn { font-size: 20px; }
             .remove-keyword-btn:hover { color: #fff; background-color: var(--filter-danger-color); }
+            .keyword-edit-mode { background-color: #eef2ff !important; }
+            .keyword-edit-input { flex-grow: 1; padding: 6px 10px; border: 2px solid var(--filter-primary-color); border-radius: 6px; font-size: 13px; background-color: var(--filter-bg-input); }
+            .keyword-edit-input:focus { outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
+            .save-edit-btn, .cancel-edit-btn { background: none; border: none; cursor: pointer; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 600; }
+            .save-edit-btn { color: #fff; background-color: var(--filter-primary-color); }
+            .save-edit-btn:hover { background-color: #2563eb; }
+            .cancel-edit-btn { color: var(--filter-text-primary); background-color: #e5e7eb; }
+            .cancel-edit-btn:hover { background-color: #d1d5db; }
             #positive-keyword-list .keyword-text { color: var(--filter-positive-color); }
             /* [MODIFIED] 导入/导出按钮区域 */
             .button-group { display: flex; gap: 8px; margin-top: 4px; }
@@ -173,11 +186,143 @@
         document.getElementById('filter-container').addEventListener('transitionend', (e) => { if (e.propertyName === 'width' && container.classList.contains('expanded')) { updateAllUI(); } });
     }
 
-    // --- UI 更新 (无变动) ---
+    // --- UI 更新 ---
     function updateAllUI() { const s = dataManager.getSettings(); document.getElementById('filter-toggle-view').classList.toggle('filter-disabled', !s.filterEnabled); document.getElementById('filter-master-switch').checked = s.filterEnabled; updateKeywordListUI(); updatePositiveKeywordListUI(); }
-    function createKeywordListItem(keyword, onRemove) { const li = document.createElement('li'); const text = li.appendChild(document.createElement('span')); text.className = 'keyword-text'; text.textContent = keyword; text.title = keyword; const btn = li.appendChild(document.createElement('button')); btn.className = 'remove-keyword-btn'; btn.title = `删除 "${keyword}"`; btn.innerHTML = '&times;'; btn.onclick = (e) => { e.stopPropagation(); onRemove(); }; return li; }
-    function updateKeywordListUI() { const list = document.getElementById('keyword-list'); list.innerHTML = ''; const keywords = dataManager.getKeywords(); if (!keywords.length) { list.innerHTML = `<li style="justify-content:center;color:var(--filter-text-secondary);pointer-events:none;background:none;">暂无过滤关键词</li>`; return; } keywords.forEach(k => list.appendChild(createKeywordListItem(k, () => { removeKeyword(k); updateKeywordListUI(); runFullScan(); }))); }
-    function updatePositiveKeywordListUI() { const list = document.getElementById('positive-keyword-list'); list.innerHTML = ''; const keywords = dataManager.getPositiveKeywords(); if (!keywords.length) { list.innerHTML = `<li style="justify-content:center;color:var(--filter-text-secondary);pointer-events:none;background:none;">暂无保留关键词</li>`; return; } keywords.forEach(k => list.appendChild(createKeywordListItem(k, () => { removePositiveKeyword(k); updatePositiveKeywordListUI(); runFullScan(); }))); }
+    function createKeywordListItem(keyword, onEdit, onRemove) {
+        const li = document.createElement('li');
+        const text = li.appendChild(document.createElement('span'));
+        text.className = 'keyword-text';
+        text.textContent = keyword;
+        text.title = keyword;
+
+        const actions = li.appendChild(document.createElement('div'));
+        actions.className = 'keyword-actions';
+
+        const editBtn = actions.appendChild(document.createElement('button'));
+        editBtn.className = 'edit-keyword-btn';
+        editBtn.title = `编辑 "${keyword}"`;
+        editBtn.innerHTML = '✎';
+        editBtn.onclick = (e) => {
+            e.stopPropagation();
+            enterEditMode(li, keyword, onEdit);
+        };
+
+        const removeBtn = actions.appendChild(document.createElement('button'));
+        removeBtn.className = 'remove-keyword-btn';
+        removeBtn.title = `删除 "${keyword}"`;
+        removeBtn.innerHTML = '&times;';
+        removeBtn.onclick = (e) => {
+            e.stopPropagation();
+            onRemove();
+        };
+
+        return li;
+    }
+
+    function enterEditMode(li, oldKeyword, onEdit) {
+        li.classList.add('keyword-edit-mode');
+        li.innerHTML = '';
+
+        const input = li.appendChild(document.createElement('input'));
+        input.type = 'text';
+        input.className = 'keyword-edit-input';
+        input.value = oldKeyword;
+
+        const actions = li.appendChild(document.createElement('div'));
+        actions.className = 'keyword-actions';
+
+        const saveBtn = actions.appendChild(document.createElement('button'));
+        saveBtn.className = 'save-edit-btn';
+        saveBtn.textContent = '保存';
+        saveBtn.onclick = () => {
+            const newValue = input.value.trim();
+            if (newValue && newValue !== oldKeyword) {
+                if (onEdit(oldKeyword, newValue)) {
+                    // 编辑成功，UI会自动刷新
+                } else {
+                    alert('关键词已存在或无效');
+                    input.focus();
+                }
+            } else {
+                exitEditMode(li, oldKeyword, onEdit, () => onEdit(oldKeyword, oldKeyword, true));
+            }
+        };
+
+        const cancelBtn = actions.appendChild(document.createElement('button'));
+        cancelBtn.className = 'cancel-edit-btn';
+        cancelBtn.textContent = '取消';
+        cancelBtn.onclick = () => {
+            exitEditMode(li, oldKeyword, onEdit, () => onEdit(oldKeyword, oldKeyword, true));
+        };
+
+        input.focus();
+        input.select();
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveBtn.click();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelBtn.click();
+            }
+        };
+    }
+
+    function exitEditMode(li, keyword, onEdit, onCancel) {
+        li.classList.remove('keyword-edit-mode');
+        onCancel();
+    }
+    function updateKeywordListUI() {
+        const list = document.getElementById('keyword-list');
+        list.innerHTML = '';
+        const keywords = dataManager.getKeywords();
+        if (!keywords.length) {
+            list.innerHTML = `<li style="justify-content:center;color:var(--filter-text-secondary);pointer-events:none;background:none;">暂无过滤关键词</li>`;
+            return;
+        }
+        keywords.forEach(k => list.appendChild(createKeywordListItem(
+            k,
+            (oldK, newK) => {
+                if (updateKeyword(oldK, newK)) {
+                    updateKeywordListUI();
+                    runFullScan();
+                    return true;
+                }
+                return false;
+            },
+            () => {
+                removeKeyword(k);
+                updateKeywordListUI();
+                runFullScan();
+            }
+        )));
+    }
+    function updatePositiveKeywordListUI() {
+        const list = document.getElementById('positive-keyword-list');
+        list.innerHTML = '';
+        const keywords = dataManager.getPositiveKeywords();
+        if (!keywords.length) {
+            list.innerHTML = `<li style="justify-content:center;color:var(--filter-text-secondary);pointer-events:none;background:none;">暂无保留关键词</li>`;
+            return;
+        }
+        keywords.forEach(k => list.appendChild(createKeywordListItem(
+            k,
+            (oldK, newK) => {
+                if (updatePositiveKeyword(oldK, newK)) {
+                    updatePositiveKeywordListUI();
+                    runFullScan();
+                    return true;
+                }
+                return false;
+            },
+            () => {
+                removePositiveKeyword(k);
+                updatePositiveKeywordListUI();
+                runFullScan();
+            }
+        )));
+    }
 
     // --- 预览图与动态内容 (无变动) ---
     const previewCache = new Map(); async function loadImagesForRow(entry) { const link = entry.querySelector('td:nth-child(2) a'); const preview = entry.querySelector('.preview-thumbs'); if (!link || !preview) return; preview.textContent = '加载中...'; const imgs = await fetchPreviewImages(link.href); preview.innerHTML = ''; if (!imgs.length) { preview.textContent = '无预览图'; return; } imgs.forEach((src, i) => setTimeout(() => { if (!entry.isConnected) return; const img = preview.appendChild(document.createElement('img')); img.src = src; img.style.opacity = '0'; img.style.transition = 'opacity .4s'; img.onload = () => img.style.opacity = '1'; img.onerror = () => img.remove(); }, i * IMAGE_LOAD_DELAY_MS)); }
