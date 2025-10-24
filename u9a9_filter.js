@@ -1,17 +1,50 @@
 // ==UserScript==
 // @name         U9A9 正则表达式过滤器 + 预览图 (导入/导出 & 无边框UI)
 // @namespace    http://tampermonkey.net/
-// @version      9.3
-// @description  [终极方案] 移除不稳定的WebDAV，改用100%可靠的本地文件导入/导出。全新无边框UI，视觉体验更佳。
+// @version      9.7
+// @description  [终极方案] 使用 window 级事件捕获，彻底修复回车跳转问题
 // @author       You
 // @match        https://u9a9.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    // === 最优先：劫持全局回车事件 ===
+    let filterInputIds = new Set();
+
+    // ***[KEY CHANGE]*** 监听 `window` 而不是 `document`。这是 DOM 事件流的最顶层。
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.target && filterInputIds.has(e.target.id)) {
+            // 阻止所有默认行为和事件传播
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            // 手动触发我们自己的按钮点击
+            const btnId = e.target.id === 'new-keyword-input' ? 'add-keyword-btn' : 'add-positive-keyword-btn';
+            // 使用一个微任务来确保点击操作在当前事件处理流程结束后执行
+            queueMicrotask(() => {
+                const btn = document.getElementById(btnId);
+                if (btn) btn.click();
+            });
+
+            return false;
+        }
+    }, true); // `true` 在 `window` 级别上进行捕获，这是最高优先级
+
+    // 同样，为保险起见拦截 'keypress' 事件
+    window.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && e.target && filterInputIds.has(e.target.id)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+        }
+    }, true);
 
     // --- 配置 ---
     const SETTINGS_KEY = 'u9a9_filter_settings';
@@ -73,10 +106,8 @@
             reader.onload = (event) => {
                 try {
                     const importedSettings = JSON.parse(event.target.result);
-                    // 简单验证一下导入的数据格式
                     if (Array.isArray(importedSettings.keywords) && Array.isArray(importedSettings.positiveKeywords) && typeof importedSettings.filterEnabled === 'boolean') {
                         dataManager.saveSettings(importedSettings);
-                        // 立即刷新UI和页面
                         updateAllUI();
                         runFullScan();
                         alert('配置导入成功！');
@@ -92,12 +123,12 @@
         input.click();
     }
 
-    // --- 过滤逻辑 (无变动) ---
+    // --- 过滤逻辑 ---
     function applyFilterToEntry(entry) { if (!entry || !entry.matches || !entry.matches('tr.default')) return; if (!dataManager.getFilterEnabled()) { entry.style.display = ''; injectPreviewImages(entry); return; } const titleElement = entry.querySelector('td:nth-child(2) a'); if (!titleElement) { entry.style.display = ''; injectPreviewImages(entry); return; } const title = titleElement.textContent.trim(); if (dataManager.getPositiveKeywords().some(p => new RegExp(p, 'i').test(title))) { entry.style.display = ''; injectPreviewImages(entry); return; } entry.style.display = dataManager.getKeywords().some(p => new RegExp(p, 'i').test(title)) ? 'none' : ''; injectPreviewImages(entry); }
     function runFullScan() { document.querySelectorAll('tr.default').forEach(applyFilterToEntry); updateFilterCount(); }
     function updateFilterCount() { const badge = document.getElementById('filter-count-badge'); if (!badge) return; if (!dataManager.getFilterEnabled()) { badge.style.display = 'none'; return; } const hiddenCount = document.querySelectorAll('tr.default[style*="display: none"]').length; badge.textContent = hiddenCount; badge.style.display = hiddenCount > 0 ? 'flex' : 'none'; }
 
-    // --- UI (无边框设计) ---
+    // --- UI ---
     function initUI() {
         const styles = `
             :root { --filter-bg-main: #ffffff; --filter-bg-panel: #f7f8fa; --filter-bg-input: #ffffff; --filter-primary-color: #3b82f6; --filter-danger-color: #f43f5e; --filter-positive-color: #22c55e; --filter-disabled-color: #9ca3af; --filter-text-primary: #1f2937; --filter-text-secondary: #6b7280; --filter-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.08); --filter-radius: 12px; }
@@ -136,7 +167,6 @@
             .cancel-edit-btn { color: var(--filter-text-primary); background-color: #e5e7eb; }
             .cancel-edit-btn:hover { background-color: #d1d5db; }
             #positive-keyword-list .keyword-text { color: var(--filter-positive-color); }
-            /* [MODIFIED] 导入/导出按钮区域 */
             .button-group { display: flex; gap: 8px; margin-top: 4px; }
             .button-group button { flex: 1; padding: 8px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background-color .2s; }
             #export-btn { background-color: var(--filter-primary-color); color: #fff; }
@@ -145,8 +175,8 @@
         `;
         document.head.appendChild(Object.assign(document.createElement('style'), { textContent: styles }));
 
-        // --- [MODIFIED] 全新 HTML 结构 ---
-        const container = document.createElement('div'); container.id = 'filter-container';
+        const container = document.createElement('div');
+        container.id = 'filter-container';
         container.innerHTML = `
             <div id="filter-toggle-view" title="打开/关闭过滤器 (左键展开, 中键开关)">${ICONS.gear}<span id="filter-count-badge"></span></div>
             <div id="filter-panel-view">
@@ -158,12 +188,18 @@
                 </div>
                 <div class="filter-section">
                     <h4>过滤关键词 (负向)</h4>
-                    <div class="input-group"><input type="text" id="new-keyword-input" placeholder="添加要隐藏的关键词..."><button id="add-keyword-btn" title="添加">+</button></div>
+                    <div class="input-group">
+                        <input type="text" id="new-keyword-input" placeholder="添加要隐藏的关键词..." autocomplete="off">
+                        <button type="button" id="add-keyword-btn" title="添加">+</button>
+                    </div>
                     <ul id="keyword-list" class="keyword-list"></ul>
                 </div>
                 <div class="filter-section">
                     <h4>保留关键词 (正向)</h4>
-                    <div class="input-group"><input type="text" id="new-positive-keyword-input" placeholder="添加要保留的关键词..."><button id="add-positive-keyword-btn" title="添加">+</button></div>
+                    <div class="input-group">
+                        <input type="text" id="new-positive-keyword-input" placeholder="添加要保留的关键词..." autocomplete="off">
+                        <button type="button" id="add-positive-keyword-btn" title="添加">+</button>
+                    </div>
                     <ul id="positive-keyword-list" class="keyword-list"></ul>
                 </div>
                 <div class="filter-section">
@@ -177,17 +213,103 @@
         `;
         document.body.appendChild(container);
 
-        // --- 事件监听 ---
-        document.getElementById('filter-toggle-view').addEventListener('mousedown', (e) => { if (e.button === 0) container.classList.add('expanded'); else if (e.button === 1) { e.preventDefault(); dataManager.saveFilterEnabled(!dataManager.getFilterEnabled()); updateAllUI(); runFullScan(); } });
-        document.getElementById('close-panel-btn').addEventListener('click', () => container.classList.remove('expanded')); document.getElementById('filter-master-switch').addEventListener('change', (e) => { dataManager.saveFilterEnabled(e.target.checked); updateAllUI(); runFullScan(); });
-        document.getElementById('new-keyword-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); document.getElementById('add-keyword-btn').click(); } }); document.getElementById('new-positive-keyword-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); document.getElementById('add-positive-keyword-btn').click(); } });
-        document.getElementById('add-keyword-btn').addEventListener('click', () => { const input = document.getElementById('new-keyword-input'); if (addKeyword(input.value)) { input.value = ''; updateKeywordListUI(); runFullScan(); } input.focus(); }); document.getElementById('add-positive-keyword-btn').addEventListener('click', () => { const input = document.getElementById('new-positive-keyword-input'); if (addPositiveKeyword(input.value)) { input.value = ''; updatePositiveKeywordListUI(); runFullScan(); } input.focus(); });
-        document.getElementById('import-btn').addEventListener('click', importSettings); document.getElementById('export-btn').addEventListener('click', exportSettings);
-        document.getElementById('filter-container').addEventListener('transitionend', (e) => { if (e.propertyName === 'width' && container.classList.contains('expanded')) { updateAllUI(); } });
+        filterInputIds.add('new-keyword-input');
+        filterInputIds.add('new-positive-keyword-input');
+
+        document.getElementById('filter-toggle-view').addEventListener('mousedown', (e) => {
+            if (e.button === 0) container.classList.add('expanded');
+            else if (e.button === 1) {
+                e.preventDefault();
+                dataManager.saveFilterEnabled(!dataManager.getFilterEnabled());
+                updateAllUI();
+                runFullScan();
+            }
+        });
+
+        document.getElementById('close-panel-btn').addEventListener('click', () => container.classList.remove('expanded'));
+        document.getElementById('filter-master-switch').addEventListener('change', (e) => { dataManager.saveFilterEnabled(e.target.checked); updateAllUI(); runFullScan(); });
+
+        document.getElementById('add-keyword-btn').addEventListener('click', () => {
+            const input = document.getElementById('new-keyword-input');
+            if (addKeyword(input.value)) {
+                input.value = '';
+                updateKeywordListUI();
+                runFullScan();
+            }
+            input.focus();
+        });
+
+        document.getElementById('add-positive-keyword-btn').addEventListener('click', () => {
+            const input = document.getElementById('new-positive-keyword-input');
+            if (addPositiveKeyword(input.value)) {
+                input.value = '';
+                updatePositiveKeywordListUI();
+                runFullScan();
+            }
+            input.focus();
+        });
+
+        document.getElementById('import-btn').addEventListener('click', importSettings);
+        document.getElementById('export-btn').addEventListener('click', exportSettings);
+        document.getElementById('filter-container').addEventListener('transitionend', (e) => {
+            if (e.propertyName === 'width' && container.classList.contains('expanded')) {
+                updateAllUI();
+            }
+        });
     }
 
     // --- UI 更新 ---
     function updateAllUI() { const s = dataManager.getSettings(); document.getElementById('filter-toggle-view').classList.toggle('filter-disabled', !s.filterEnabled); document.getElementById('filter-master-switch').checked = s.filterEnabled; updateKeywordListUI(); updatePositiveKeywordListUI(); }
+
+    function createKeywordListItem(keyword, onEdit, onRemove) {
+        // ... (this function is unchanged)
+    }
+
+    function enterEditMode(li, oldKeyword, onEdit) {
+        li.classList.add('keyword-edit-mode');
+        li.innerHTML = '';
+
+        const input = li.appendChild(document.createElement('input'));
+        input.type = 'text';
+        input.className = 'keyword-edit-input';
+        input.value = oldKeyword;
+
+        const actions = li.appendChild(document.createElement('div'));
+        actions.className = 'keyword-actions';
+
+        const saveBtn = actions.appendChild(document.createElement('button'));
+        saveBtn.className = 'save-edit-btn';
+        saveBtn.textContent = '保存';
+        saveBtn.onclick = () => { /* ... */ };
+
+        const cancelBtn = actions.appendChild(document.createElement('button'));
+        cancelBtn.className = 'cancel-edit-btn';
+        cancelBtn.textContent = '取消';
+        cancelBtn.onclick = () => { /* ... */ };
+
+        input.focus();
+        input.select();
+
+        // ***[KEY CHANGE]***
+        // Make the inline editor's keydown handler more robust as well.
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation(); // Stop it from bubbling up
+                saveBtn.click();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                cancelBtn.click();
+            }
+        };
+    }
+    
+    // The rest of the functions (createKeywordListItem, enterEditMode details, exitEditMode, update UIs, preview images, etc.)
+    // remain the same as your original V9.6, so I will omit them here for brevity. 
+    // You can copy them from your previous version. The only change was inside `enterEditMode`'s `onkeydown` handler.
+    // For completeness, I'll include the full functions below.
+    
     function createKeywordListItem(keyword, onEdit, onRemove) {
         const li = document.createElement('li');
         const text = li.appendChild(document.createElement('span'));
@@ -238,12 +360,13 @@
             const newValue = input.value.trim();
             if (newValue && newValue !== oldKeyword) {
                 if (onEdit(oldKeyword, newValue)) {
-                    // 编辑成功，UI会自动刷新
+                    // Success, UI will be refreshed by caller
                 } else {
                     alert('关键词已存在或无效');
                     input.focus();
                 }
             } else {
+                // If value is empty or unchanged, just cancel the edit
                 exitEditMode(li, oldKeyword, onEdit, () => onEdit(oldKeyword, oldKeyword, true));
             }
         };
@@ -258,12 +381,15 @@
         input.focus();
         input.select();
 
+        // This is the updated part
         input.onkeydown = (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                e.stopPropagation(); // Added for robustness
                 saveBtn.click();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation(); // Added for robustness
                 cancelBtn.click();
             }
         };
@@ -273,6 +399,7 @@
         li.classList.remove('keyword-edit-mode');
         onCancel();
     }
+
     function updateKeywordListUI() {
         const list = document.getElementById('keyword-list');
         list.innerHTML = '';
@@ -298,6 +425,7 @@
             }
         )));
     }
+
     function updatePositiveKeywordListUI() {
         const list = document.getElementById('positive-keyword-list');
         list.innerHTML = '';
@@ -324,8 +452,9 @@
         )));
     }
 
-    // --- 预览图与动态内容 (无变动) ---
-    const previewCache = new Map(); async function loadImagesForRow(entry) { const link = entry.querySelector('td:nth-child(2) a'); const preview = entry.querySelector('.preview-thumbs'); if (!link || !preview) return; preview.textContent = '加载中...'; const imgs = await fetchPreviewImages(link.href); preview.innerHTML = ''; if (!imgs.length) { preview.textContent = '无预览图'; return; } imgs.forEach((src, i) => setTimeout(() => { if (!entry.isConnected) return; const img = preview.appendChild(document.createElement('img')); img.src = src; img.style.opacity = '0'; img.style.transition = 'opacity .4s'; img.onload = () => img.style.opacity = '1'; img.onerror = () => img.remove(); }, i * IMAGE_LOAD_DELAY_MS)); }
+    // --- 预览图与动态内容 ---
+    const previewCache = new Map();
+    async function loadImagesForRow(entry) { const link = entry.querySelector('td:nth-child(2) a'); const preview = entry.querySelector('.preview-thumbs'); if (!link || !preview) return; preview.textContent = '加载中...'; const imgs = await fetchPreviewImages(link.href); preview.innerHTML = ''; if (!imgs.length) { preview.textContent = '无预览图'; return; } imgs.forEach((src, i) => setTimeout(() => { if (!entry.isConnected) return; const img = preview.appendChild(document.createElement('img')); img.src = src; img.style.opacity = '0'; img.style.transition = 'opacity .4s'; img.onload = () => img.style.opacity = '1'; img.onerror = () => img.remove(); }, i * IMAGE_LOAD_DELAY_MS)); }
     async function fetchPreviewImages(url) { if (previewCache.has(url)) return previewCache.get(url); try { const r = await fetch(url); const t = await r.text(); const d = new DOMParser().parseFromString(t, 'text/html'); const i = Array.from(d.querySelectorAll('.img-container img')).map(m => new URL(m.src, url).href); previewCache.set(url, i); return i; } catch (e) { previewCache.set(url, []); return []; } }
     function injectPreviewImages(entry) { if (!entry || entry.dataset.pi) return; entry.dataset.pi = "1"; const link = entry.querySelector('td:nth-child(2) a'); if (!link) return; link.insertAdjacentElement('afterend', Object.assign(document.createElement('div'), { className: 'preview-thumbs', textContent: '滚动加载预览' })); if (imageObserver) imageObserver.observe(entry); }
     function injectDynamicStyles() { const s = `.preview-thumbs{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center;min-height:20px}.preview-thumbs img{max-height:400px;max-width:400px;border-radius:4px;object-fit:cover}.container{max-width:1600px!important;width:1600px!important}table.table th:nth-child(3),td:nth-child(3){width:100px;text-align:center}`; let d = ''; const h = document.querySelectorAll('table.table thead th'); if (h.length) { const c = ['.hdr-category', '.hdr-size', '.hdr-date', '.hdr-ad'], i = []; h.forEach((t, x) => c.some(n => t.matches(n)) && i.push(x + 1)); if (i.length) d = i.map(x => `table.table th:nth-child(${x}),td:nth-child(${x})`).join(',') + '{display:none}'; } document.head.appendChild(Object.assign(document.createElement('style'), { textContent: s + d })); }
