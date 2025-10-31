@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BT之家 + 1lou 功能增强 (瀑布流卡片版)
 // @namespace    https://github.com/a39908646
-// @version      5.4.0
-// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 + 完整标题 + 磁力链接
+// @version      5.5.0
+// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接
 // @author       a39908646
 // @match        *://*.1lou.me/*
 // @match        *://*.1lou.pro/*
@@ -55,6 +55,14 @@
       clearTimeout(t);
       t = setTimeout(() => fn.apply(this, args), wait);
     };
+  };
+
+  // 检测是否在论坛列表页（排除搜索页）
+  const isForumListPage = () => {
+    const hostname = location.hostname;
+    const pathname = location.pathname;
+    // 仅在 1lou 站点且是 forum 页面时返回 true，搜索页返回 false
+    return hostname.includes("1lou.") && pathname.includes("/forum") && !pathname.includes("/search");
   };
 
   const showTip = (message, type = "info", duration = 2000) => {
@@ -324,7 +332,7 @@
 
   function setupLazyLoading(li) {
     if (!state.isThumbEnabled || li.dataset.lazyObserverAttached) return;
-    if (!location.hostname.includes("1lou.")) return;
+    if (!isForumListPage()) return;
 
     const observer = new IntersectionObserver(
       entries => {
@@ -347,7 +355,8 @@
     const listContainer = document.querySelector(SELECTORS.LIST_CONTAINER);
     if (!listContainer) return;
 
-    if (state.isWaterfallMode) {
+    // 仅在论坛列表页启用瀑布流，搜索页不启用
+    if (state.isWaterfallMode && isForumListPage()) {
       listContainer.classList.add('waterfall-container');
       document.querySelectorAll(SELECTORS.THREAD).forEach(li => {
         if (!li.classList.contains('filtered-out')) {
@@ -799,7 +808,8 @@
       });
       applyFilters();
 
-      if (state.isWaterfallMode && location.hostname.includes("1lou.")) {
+      // 仅在论坛列表页启用瀑布流
+      if (state.isWaterfallMode && isForumListPage()) {
         toggleWaterfallLayout();
       }
     };
@@ -821,7 +831,7 @@
 
         applyFiltersToRow(item);
 
-        if (state.isWaterfallMode && location.hostname.includes("1lou.") && !item.classList.contains('filtered-out')) {
+        if (state.isWaterfallMode && isForumListPage() && !item.classList.contains('filtered-out')) {
           convertToCard(item);
           setupLazyLoading(item);
         }
@@ -851,7 +861,7 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    console.log('✅ 1lou 增强脚本已启动');
+    console.log('✅ 1lou 增强脚本已启动', isForumListPage() ? '(论坛列表页 - 瀑布流已启用)' : '(搜索页 - 瀑布流已禁用)');
   }
 
   if (document.readyState === "loading") {
