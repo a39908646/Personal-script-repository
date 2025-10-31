@@ -623,13 +623,12 @@
       input:checked + .slider:before { transform: translateX(20px); }
       input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
 
-      .waterfall-container { column-count: 5; column-gap: 15px; padding: 15px; list-style: none; }
+      .waterfall-container { column-count: 6; column-gap: 15px; padding: 15px; list-style: none; }
       .waterfall-container > li { break-inside: avoid; margin-bottom: 15px; display: inline-block; width: 100%; }
-      .thread-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: transform 0.2s, box-shadow 0.2s; height: 100%; display: flex; flex-direction: column; }
-      .thread-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+      .thread-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); height: 100%; display: flex; flex-direction: column; transition: all 0.25s ease; }
+      .thread-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
       .card-image-wrap { width: 100%; aspect-ratio: 2 / 3; background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; flex-shrink: 0; }
-      .card-image { width: 100%; height: 100%; object-fit: contain; display: block; cursor: pointer; transition: transform 0.3s; background: #000; }
-      .card-image:hover { transform: scale(1.02); }
+      .card-image { width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
       .card-loading { color: #999; font-size: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
       .spinner { width: 30px; height: 30px; border: 3px solid #f3f3f3; border-top: 3px solid #4a90e2; border-radius: 50%; animation: spin 1s linear infinite; }
       .mini-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #fff; border-top: 2px solid transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
@@ -654,6 +653,8 @@
       .btn-magnet.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
       .btn-magnet.error { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
       .btn-magnet:disabled { opacity: 0.7; cursor: not-allowed; }
+      .thread, .post { border-bottom: none; }
+      .thread:hover { background:none !important; }
 
       @media (max-width: 1600px) { .waterfall-container { column-count: 4; } }
       @media (max-width: 1200px) { .waterfall-container { column-count: 3; column-gap: 12px; } }
