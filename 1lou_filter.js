@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BT之家 + 1lou 功能增强 (瀑布流卡片版)
 // @namespace    https://github.com/a39908646
-// @version      5.5.0
-// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接
+// @version      5.6.0
+// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接 + 移动端适配
 // @author       a39908646
 // @match        *://*.1lou.me/*
 // @match        *://*.1lou.pro/*
@@ -55,6 +55,12 @@
       clearTimeout(t);
       t = setTimeout(() => fn.apply(this, args), wait);
     };
+  };
+
+  // 检测是否为移动设备
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+           window.innerWidth <= 768;
   };
 
   // 检测是否在论坛列表页（排除搜索页）
@@ -592,28 +598,30 @@
   /* ------------------ UI 面板 ------------------ */
   function createStyles() {
     const style = document.createElement("style");
+    const mobile = isMobile();
     style.textContent = `
-      #filterPanel { position: fixed; top: 100px; right: -320px; width: 320px; background: white; padding: 15px; border: 1px solid #ccc; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: right 0.3s ease-in-out; }
-      #toggleFilter { position: absolute; left: -30px; top: 50%; transform: translateY(-50%); width: 30px; height: 60px; background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px 0 0 5px; font-size: 20px; }
+      #filterPanel { position: fixed; ${mobile ? 'bottom: -400px; left: 0; right: 0; width: 100%; max-height: 70vh; overflow-y: auto;' : 'top: 100px; right: -320px; width: 320px;'} background: white; padding: 15px; border: 1px solid #ccc; ${mobile ? 'border-radius: 15px 15px 0 0;' : 'border-radius: 5px;'} z-index: 9999; box-shadow: 0 ${mobile ? '-2px' : '2px'} 5px rgba(0,0,0,0.2); transition: ${mobile ? 'bottom' : 'right'} 0.3s ease-in-out; }
+      #toggleFilter { position: absolute; ${mobile ? 'top: -40px; left: 50%; transform: translateX(-50%); width: 60px; height: 40px; border-radius: 8px 8px 0 0;' : 'left: -30px; top: 50%; transform: translateY(-50%); width: 30px; height: 60px; border-radius: 5px 0 0 5px;'} background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; ${mobile ? 'box-shadow: 0 -2px 5px rgba(0,0,0,0.2);' : ''} }
       .panel-header { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; position: relative; height: 30px; }
       .panel-title { font-size: 16px; font-weight: bold; flex-shrink: 0; }
       .header-info { display: flex; align-items: center; gap: 8px; }
       .stats { text-align: right; color: #666; font-size: 11px; white-space: nowrap; }
       #shortcut-hint { position: relative; cursor: help; width: 16px; height: 16px; border-radius: 50%; background: #eee; color: #666; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; user-select: none; }
       #shortcut-hint::after { content: attr(data-tooltip); position: absolute; bottom: 125%; right: 50%; transform: translateX(50%); white-space: nowrap; background: #333; color: white; padding: 5px 10px; border-radius: 4px; font-size: 11px; z-index: 10000; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; pointer-events: none; }
-      #shortcut-hint:hover::after { opacity: 1; visibility: visible; }
+      #shortcut-hint:hover::after, #shortcut-hint:active::after { opacity: 1; visibility: visible; }
       .filter-tip { padding: 4px 12px; font-size: 13px; transition: opacity 0.3s ease; opacity: 0; white-space: nowrap; position: absolute; left: 105px; top: 50%; transform: translateY(-50%); }
       .filter-tip.info { color: #4a90e2; }
       .filter-tip.error { color: #e74c3c; }
       .filter-section { margin-bottom: 15px; }
       .filter-section h4 { font-size: 14px; margin-bottom: 5px; color: #333; }
-      .filter-textarea { width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; font-size: 12px; resize: vertical; box-sizing: border-box; }
-      .filter-buttons { display: flex; justify-content: space-between; margin-top: 15px; }
-      .filter-button { padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; background: #4a90e2; color: white; font-size: 12px; }
+      .filter-textarea { width: 100%; height: ${mobile ? '60px' : '80px'}; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; font-size: ${mobile ? '14px' : '12px'}; resize: vertical; box-sizing: border-box; }
+      .filter-buttons { display: flex; justify-content: space-between; margin-top: 15px; gap: 10px; }
+      .filter-button { padding: ${mobile ? '10px 20px' : '5px 15px'}; border: none; border-radius: 4px; cursor: pointer; background: #4a90e2; color: white; font-size: ${mobile ? '14px' : '12px'}; flex: 1; touch-action: manipulation; }
       .filter-button:hover { opacity: 0.9; }
+      .filter-button:active { opacity: 0.8; transform: scale(0.98); }
       .filter-button.danger { background: #e74c3c; }
-      .thumb-toggle-section { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; }
-      .thumb-toggle-section span { font-size: 14px; color: #333; }
+      .thumb-toggle-section { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; min-height: 44px; }
+      .thumb-toggle-section span { font-size: ${mobile ? '15px' : '14px'}; color: #333; }
       .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
       .switch input { opacity: 0; width: 0; height: 0; }
       .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
@@ -637,24 +645,30 @@
       .card-error { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #999; padding: 20px; text-align: center; }
       .error-icon { font-size: 32px; }
       .error-msg { font-size: 13px; color: #999; }
-      .retry-btn { margin-top: 5px; padding: 6px 16px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+      .retry-btn { margin-top: 5px; padding: 6px 16px; background: #4a90e2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: background 0.2s; touch-action: manipulation; min-height: 32px; }
       .retry-btn:hover { background: #357abd; }
       .retry-btn:active { transform: scale(0.95); }
       .card-content { padding: 12px; flex-grow: 1; display: flex; flex-direction: column; gap: 10px; }
       .card-title-wrap { flex-grow: 1; }
       .card-title { display: block; font-size: 13px; color: #333; text-decoration: none; line-height: 1.5; word-break: break-all; width: 100%; }
-      .card-title:hover { color: #4a90e2; }
+      .card-title:hover, .card-title:active { color: #4a90e2; }
       .card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid #f0f0f0; gap: 8px; }
       .card-date { font-size: 11px; color: #999; flex-shrink: 0; }
       .card-actions { display: flex; gap: 8px; flex-shrink: 0; }
-      .btn-magnet { display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3); white-space: nowrap; }
+      .btn-magnet { display: flex; align-items: center; gap: 4px; padding: ${mobile ? '6px 12px' : '4px 10px'}; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: ${mobile ? '12px' : '11px'}; transition: all 0.2s; box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3); white-space: nowrap; touch-action: manipulation; min-height: ${mobile ? '36px' : 'auto'}; }
       .btn-magnet:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4); }
       .btn-magnet:active { transform: translateY(0); }
       .btn-magnet.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
       .btn-magnet.error { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
       .btn-magnet:disabled { opacity: 0.7; cursor: not-allowed; }
       .thread, .post { border-bottom: none; }
-      .thread:hover { background:none !important; }
+      .thread:hover, .thread:active { background:none !important; }
+
+      /* 移动端遮罩层 */
+      ${mobile ? `
+      #filterPanelOverlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9998; opacity: 0; transition: opacity 0.3s ease-in-out; }
+      #filterPanelOverlay.active { display: block; opacity: 1; }
+      ` : ''}
 
       @media (max-width: 1600px) { .waterfall-container > li { flex: 0 1 calc(25% - 15px); } }
       @media (max-width: 1200px) { .waterfall-container { gap: 12px; } .waterfall-container > li { flex: 0 1 calc(33.333% - 12px); } }
@@ -669,9 +683,10 @@
     panel.id = "filterPanel";
     const includeKeywords = GM_getValue("includeKeywords", "2160p\n4K\nHDR");
     const excludeKeywords = GM_getValue("excludeKeywords", "国语配音\n合集");
+    const mobile = isMobile();
 
     panel.innerHTML = `
-      <div id="toggleFilter">◀</div>
+      <div id="toggleFilter">${mobile ? '▼' : '◀'}</div>
       <div class="panel-header">
         <span class="panel-title">结果过滤器</span>
         <div id="filterTip" class="filter-tip"></div>
@@ -680,7 +695,7 @@
             <span>显示: <b id="showCount">0</b></span>
             <span style="margin-left: 4px;">隐藏: <b id="hideCount">0</b></span>
           </div>
-          <div id="shortcut-hint" data-tooltip="快捷键: Ctrl+Shift+F | Ctrl+Enter (保存)">?</div>
+          <div id="shortcut-hint" data-tooltip="${mobile ? '点击查看提示' : '快捷键: Ctrl+Shift+F | Ctrl+Enter (保存)'}">?</div>
         </div>
       </div>
       <div class="filter-section">
@@ -712,9 +727,20 @@
     `;
     document.body.appendChild(panel);
 
+    // 为移动端添加遮罩层
+    if (mobile) {
+      const overlay = document.createElement("div");
+      overlay.id = "filterPanelOverlay";
+      overlay.addEventListener("click", togglePanel);
+      document.body.appendChild(overlay);
+    }
+
     if (state.panelVisible) {
-      panel.style.right = "0";
-      panel.querySelector("#toggleFilter").innerHTML = "▶";
+      panel.style[mobile ? 'bottom' : 'right'] = "0";
+      panel.querySelector("#toggleFilter").innerHTML = mobile ? "▲" : "▶";
+      if (mobile) {
+        document.getElementById("filterPanelOverlay")?.classList.add("active");
+      }
     }
 
     addEventListeners();
@@ -724,9 +750,26 @@
     const panel = document.getElementById("filterPanel");
     if (!panel) return;
     const toggleBtn = panel.querySelector("#toggleFilter");
+    const mobile = isMobile();
+    const overlay = document.getElementById("filterPanelOverlay");
+
     state.panelVisible = !state.panelVisible;
-    panel.style.right = state.panelVisible ? "0" : "-320px";
-    toggleBtn.innerHTML = state.panelVisible ? "▶" : "◀";
+
+    if (mobile) {
+      panel.style.bottom = state.panelVisible ? "0" : "-400px";
+      toggleBtn.innerHTML = state.panelVisible ? "▲" : "▼";
+      if (overlay) {
+        if (state.panelVisible) {
+          overlay.classList.add("active");
+        } else {
+          overlay.classList.remove("active");
+        }
+      }
+    } else {
+      panel.style.right = state.panelVisible ? "0" : "-320px";
+      toggleBtn.innerHTML = state.panelVisible ? "▶" : "◀";
+    }
+
     GM_setValue("panelVisible", state.panelVisible);
   }
 
@@ -768,7 +811,8 @@
     document.getElementById("toggleThumbs").addEventListener("change", toggleThumbnailLoading);
 
     const handleKeydown = (e) => {
-      if (e.ctrlKey && e.key === "Enter") {
+      // 仅在非移动端启用快捷键
+      if (!isMobile() && e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         saveFilters();
       }
@@ -777,12 +821,15 @@
     document.getElementById("includeKeywords").addEventListener("keydown", handleKeydown);
     document.getElementById("excludeKeywords").addEventListener("keydown", handleKeydown);
 
-    document.addEventListener("keydown", (e) => {
-      if (e.ctrlKey && e.shiftKey && (e.key === "F" || e.key === "f")) {
-        e.preventDefault();
-        togglePanel();
-      }
-    });
+    // 仅在非移动端监听全局快捷键
+    if (!isMobile()) {
+      document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey && e.shiftKey && (e.key === "F" || e.key === "f")) {
+          e.preventDefault();
+          togglePanel();
+        }
+      });
+    }
   }
 
   /* ------------------ 初始化 ------------------ */
@@ -862,7 +909,7 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    console.log('✅ 1lou 增强脚本已启动', isForumListPage() ? '(论坛列表页 - 瀑布流已启用)' : '(搜索页 - 瀑布流已禁用)');
+    console.log('✅ 1lou 增强脚本已启动', isForumListPage() ? '(论坛列表页 - 瀑布流已启用)' : '(搜索页 - 瀑布流已禁用)', isMobile() ? '(移动端模式)' : '(桌面端模式)');
   }
 
   if (document.readyState === "loading") {
