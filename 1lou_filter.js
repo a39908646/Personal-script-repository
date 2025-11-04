@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BT之家 + 1lou 功能增强 (瀑布流卡片版)
 // @namespace    https://github.com/a39908646
-// @version      5.6.0
-// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接 + 移动端适配
+// @version      5.9.0
+// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接
 // @author       a39908646
 // @match        *://*.1lou.me/*
 // @match        *://*.1lou.pro/*
@@ -69,6 +69,14 @@
     const pathname = location.pathname;
     // 仅在 1lou 站点且是 forum 页面时返回 true，搜索页返回 false
     return hostname.includes("1lou.") && pathname.includes("/forum") && !pathname.includes("/search");
+  };
+
+  // 检测是否在帖子详情页
+  const isThreadDetailPage = () => {
+    const hostname = location.hostname;
+    const pathname = location.pathname;
+    // 检测是否为 thread-xxxxx.htm 格式的 URL
+    return hostname.includes("1lou.") && /\/thread-\d+\.htm/.test(pathname);
   };
 
   const showTip = (message, type = "info", duration = 2000) => {
@@ -215,6 +223,198 @@
         onerror: reject
       });
     });
+  }
+
+  /* ------------------ 详情页磁力链接功能 ------------------ */
+  async function enhanceThreadDetailPage() {
+    if (!isThreadDetailPage()) return;
+
+    const torrentLink = document.querySelector('.attachlist a[href*="attach-download"]');
+    if (!torrentLink) {
+      console.log('❌ 未找到种子下载链接');
+      return;
+    }
+
+    const torrentUrl = torrentLink.href;
+    console.log('✅ 找到种子链接:', torrentUrl);
+
+    // 创建简洁样式
+    const style = document.createElement('style');
+    const mobile = isMobile();
+    style.textContent = `
+      .detail-magnet-container {
+        margin: ${mobile ? '12px 0' : '15px 0'};
+        padding: ${mobile ? '10px' : '12px'};
+        background: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: ${mobile ? '13px' : '14px'};
+      }
+      .detail-magnet-label {
+        color: #666;
+        font-weight: 500;
+        margin-bottom: 6px;
+        font-size: ${mobile ? '12px' : '13px'};
+      }
+      .detail-magnet-content {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .detail-magnet-text {
+        flex: 1;
+        padding: ${mobile ? '8px' : '6px 8px'};
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: ${mobile ? '11px' : '12px'};
+        color: #333;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-height: ${mobile ? '36px' : '28px'};
+        display: flex;
+        align-items: center;
+      }
+      .detail-magnet-text.loading {
+        color: #999;
+        font-family: inherit;
+      }
+      .detail-copy-btn {
+        padding: ${mobile ? '8px 16px' : '6px 12px'};
+        background: #4a90e2;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: ${mobile ? '13px' : '12px'};
+        white-space: nowrap;
+        transition: all 0.2s;
+        touch-action: manipulation;
+        min-height: ${mobile ? '36px' : '28px'};
+        font-weight: 500;
+      }
+      .detail-copy-btn:hover {
+        background: #357abd;
+      }
+      .detail-copy-btn:active {
+        transform: scale(0.98);
+      }
+      .detail-copy-btn.success {
+        background: #28a745;
+      }
+      .detail-copy-btn.error {
+        background: #dc3545;
+      }
+      .detail-copy-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // 创建容器
+    const magnetContainer = document.createElement('div');
+    magnetContainer.className = 'detail-magnet-container';
+    magnetContainer.innerHTML = `
+      <div class="detail-magnet-label">🧲 磁力链接</div>
+      <div class="detail-magnet-content">
+        <div class="detail-magnet-text loading" id="magnetLinkText">正在生成磁力链接...</div>
+        <button class="detail-copy-btn" id="generateMagnetBtn" disabled>生成中...</button>
+      </div>
+    `;
+
+    // 找到首图并插入
+    const messageContent = document.querySelector('.message.break-all');
+    if (messageContent) {
+      const firstImage = messageContent.querySelector('img');
+      if (firstImage) {
+        firstImage.parentNode.insertBefore(magnetContainer, firstImage);
+      } else {
+        messageContent.insertBefore(magnetContainer, messageContent.firstChild);
+      }
+
+      const magnetText = document.getElementById('magnetLinkText');
+      const generateBtn = document.getElementById('generateMagnetBtn');
+      let generatedMagnet = '';
+
+      // 自动生成磁力链接
+      (async () => {
+        try {
+          const magnet = await torrentToMagnet(torrentUrl);
+          generatedMagnet = magnet;
+
+          magnetText.textContent = magnet;
+          magnetText.classList.remove('loading');
+          generateBtn.textContent = '复制';
+          generateBtn.disabled = false;
+
+          console.log('✅ 磁力链接已自动生成');
+        } catch (err) {
+          console.error('❌ 磁力链接生成失败:', err);
+          magnetText.textContent = '生成失败';
+          magnetText.classList.add('loading');
+          generateBtn.textContent = '重试';
+          generateBtn.classList.add('error');
+          generateBtn.disabled = false;
+        }
+      })();
+
+      // 复制按钮事件
+      generateBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+
+        // 如果生成失败，点击重试
+        if (generateBtn.classList.contains('error')) {
+          generateBtn.disabled = true;
+          generateBtn.textContent = '生成中...';
+          generateBtn.classList.remove('error');
+          magnetText.textContent = '正在生成磁力链接...';
+          magnetText.classList.add('loading');
+
+          try {
+            const magnet = await torrentToMagnet(torrentUrl);
+            generatedMagnet = magnet;
+
+            magnetText.textContent = magnet;
+            magnetText.classList.remove('loading');
+            generateBtn.textContent = '复制';
+            generateBtn.disabled = false;
+          } catch (err) {
+            console.error('磁力链接生成失败:', err);
+            magnetText.textContent = '生成失败';
+            generateBtn.textContent = '重试';
+            generateBtn.classList.add('error');
+            generateBtn.disabled = false;
+          }
+          return;
+        }
+
+        // 复制磁力链接
+        if (generatedMagnet) {
+          try {
+            await navigator.clipboard.writeText(generatedMagnet);
+            const originalText = generateBtn.textContent;
+            generateBtn.textContent = '已复制';
+            generateBtn.classList.add('success');
+            setTimeout(() => {
+              generateBtn.textContent = originalText;
+              generateBtn.classList.remove('success');
+            }, 2000);
+          } catch (err) {
+            generateBtn.textContent = '复制失败';
+            generateBtn.classList.add('error');
+            setTimeout(() => {
+              generateBtn.textContent = '复制';
+              generateBtn.classList.remove('error');
+            }, 2000);
+          }
+        }
+      });
+
+      console.log('✅ 详情页磁力链接功能已启用');
+    }
   }
 
   /* ------------------ 过滤功能 ------------------ */
@@ -834,6 +1034,13 @@
 
   /* ------------------ 初始化 ------------------ */
   function initialize() {
+    // 如果是详情页，执行详情页增强功能
+    if (isThreadDetailPage()) {
+      enhanceThreadDetailPage();
+      return;
+    }
+
+    // 以下是列表页的逻辑
     if (!document.querySelector(SELECTORS.LIST_CONTAINER)) return;
 
     createStyles();
@@ -909,7 +1116,7 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    console.log('✅ 1lou 增强脚本已启动', isForumListPage() ? '(论坛列表页 - 瀑布流已启用)' : '(搜索页 - 瀑布流已禁用)', isMobile() ? '(移动端模式)' : '(桌面端模式)');
+    console.log('✅ 1lou 增强脚本已启动 (列表页)', isForumListPage() ? '(论坛列表页 - 瀑布流已启用)' : '(搜索页 - 瀑布流已禁用)', isMobile() ? '(移动端模式)' : '(桌面端模式)');
   }
 
   if (document.readyState === "loading") {
