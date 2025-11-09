@@ -956,9 +956,15 @@
     const style = document.createElement("style");
     const mobile = isMobile();
     style.textContent = `
-      #filterPanel { position: fixed; ${mobile ? 'bottom: -400px; left: 0; right: 0; width: 100%; max-height: 70vh; overflow-y: auto;' : 'top: 100px; right: -320px; width: 320px;'} background: white; padding: 15px; border: 1px solid #ccc; ${mobile ? 'border-radius: 15px 15px 0 0;' : 'border-radius: 5px;'} z-index: 9999; box-shadow: 0 ${mobile ? '-2px' : '2px'} 5px rgba(0,0,0,0.2); transition: ${mobile ? 'bottom' : 'right'} 0.3s ease-in-out; }
-      #toggleFilter { position: absolute; ${mobile ? 'top: -40px; left: 50%; transform: translateX(-50%); width: 60px; height: 40px; border-radius: 8px 8px 0 0;' : 'left: -30px; top: 50%; transform: translateY(-50%); width: 30px; height: 60px; border-radius: 5px 0 0 5px;'} background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; ${mobile ? 'box-shadow: 0 -2px 5px rgba(0,0,0,0.2);' : ''} }
-      .panel-header { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; position: relative; height: 30px; }
+      #filterPanel { position: fixed; bottom: -100%; ${mobile ? 'left: 0; right: 0; width: 100%;' : 'right: 20px; width: 90%; max-width: 400px;'} max-height: ${mobile ? '70vh' : '80vh'}; overflow-y: auto; background: white; padding: 15px; border: 1px solid #ccc; border-radius: 15px 15px 0 0; z-index: 9999; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); transition: bottom 0.3s ease-in-out; }
+      #toggleFilter { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; font-weight: bold; box-shadow: 0 4px 12px rgba(74, 144, 226, 0.5); z-index: 9998; -webkit-tap-highlight-color: transparent; user-select: none; transition: all 0.2s; }
+      #toggleFilter:active { transform: scale(0.9); }
+      #toggleFilter.hidden { display: none; }
+      .panel-header { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; position: relative; min-height: 30px; }
+      .panel-header-left { display: flex; align-items: center; gap: 10px; }
+      .minimize-btn { background: #f0f0f0; border: none; border-radius: 50%; width: 30px; height: 30px; min-width: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; color: #666; transition: all 0.2s; -webkit-tap-highlight-color: transparent; flex-shrink: 0; }
+      .minimize-btn:hover { background: #e0e0e0; }
+      .minimize-btn:active { transform: scale(0.9); }
       .panel-title { font-size: 16px; font-weight: bold; flex-shrink: 0; }
       .header-info { display: flex; align-items: center; gap: 8px; }
       .stats { text-align: right; color: #666; font-size: 11px; white-space: nowrap; }
@@ -1043,9 +1049,11 @@
     const mobile = isMobile();
 
     panel.innerHTML = `
-      <div id="toggleFilter">${mobile ? '▼' : '◀'}</div>
       <div class="panel-header">
-        <span class="panel-title">结果过滤器</span>
+        <div class="panel-header-left">
+          <button class="minimize-btn" id="minimizeBtn">▼</button>
+          <span class="panel-title">结果过滤器</span>
+        </div>
         <div id="filterTip" class="filter-tip"></div>
         <div class="header-info">
           <div class="stats">
@@ -1088,6 +1096,12 @@
     `;
     document.body.appendChild(panel);
 
+    // 创建浮动按钮（统一样式）
+    const floatBtn = document.createElement("div");
+    floatBtn.id = "toggleFilter";
+    floatBtn.innerHTML = "⚙️";
+    document.body.appendChild(floatBtn);
+
     // 为移动端添加遮罩层
     if (mobile) {
       const overlay = document.createElement("div");
@@ -1097,8 +1111,8 @@
     }
 
     if (state.panelVisible) {
-      panel.style[mobile ? 'bottom' : 'right'] = "0";
-      panel.querySelector("#toggleFilter").innerHTML = mobile ? "▲" : "▶";
+      panel.style.bottom = "0";
+      floatBtn.classList.add("hidden");
       if (mobile) {
         document.getElementById("filterPanelOverlay")?.classList.add("active");
       }
@@ -1110,25 +1124,22 @@
   function togglePanel() {
     const panel = document.getElementById("filterPanel");
     if (!panel) return;
-    const toggleBtn = panel.querySelector("#toggleFilter");
-    const mobile = isMobile();
+    const floatBtn = document.getElementById("toggleFilter");
     const overlay = document.getElementById("filterPanelOverlay");
 
     state.panelVisible = !state.panelVisible;
 
-    if (mobile) {
-      panel.style.bottom = state.panelVisible ? "0" : "-400px";
-      toggleBtn.innerHTML = state.panelVisible ? "▲" : "▼";
-      if (overlay) {
-        if (state.panelVisible) {
-          overlay.classList.add("active");
-        } else {
-          overlay.classList.remove("active");
-        }
+    panel.style.bottom = state.panelVisible ? "0" : "-100%";
+    if (floatBtn) {
+      floatBtn.classList.toggle("hidden", state.panelVisible);
+    }
+
+    if (isMobile() && overlay) {
+      if (state.panelVisible) {
+        overlay.classList.add("active");
+      } else {
+        overlay.classList.remove("active");
       }
-    } else {
-      panel.style.right = state.panelVisible ? "0" : "-320px";
-      toggleBtn.innerHTML = state.panelVisible ? "▶" : "◀";
     }
 
     GM_setValue("panelVisible", state.panelVisible);
@@ -1168,7 +1179,12 @@
   }
 
   function addEventListeners() {
-    document.getElementById("toggleFilter").addEventListener("click", togglePanel);
+    const floatBtn = document.getElementById("toggleFilter");
+    const minimizeBtn = document.getElementById("minimizeBtn");
+
+    if (floatBtn) floatBtn.addEventListener("click", togglePanel);
+    if (minimizeBtn) minimizeBtn.addEventListener("click", togglePanel);
+
     document.getElementById("saveFilters").addEventListener("click", saveFilters);
     document.getElementById("resetFilters").addEventListener("click", resetFilters);
     document.getElementById("toggleWaterfall").addEventListener("change", toggleWaterfallMode);
