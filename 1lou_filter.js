@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         BT之家 + 1lou 功能增强 (瀑布流卡片版)
+// @name         BT之家 + 1lou 功能增强 (瀑布流卡片版 + TMDB海报)
 // @namespace    https://github.com/a39908646
-// @version      5.9.0
-// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接
+// @version      6.2.2
+// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + TMDB官方海报 + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接
 // @author       a39908646
 // @match        *://*.1lou.me/*
 // @match        *://*.1lou.pro/*
@@ -28,7 +28,13 @@
     MAX_CONCURRENT: 3,
     LAZY_LOAD_MARGIN: "300px",
     DEBOUNCE_DELAY: 300,
+    // TMDB API 配置
+    TMDB_API_BASE: "https://api.themoviedb.org/3",
+    TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
   };
+
+  // 动态获取 TMDB API Key
+  const getTMDBApiKey = () => GM_getValue("tmdbApiKey", "");
 
   const SELECTORS = {
     THREAD: "li.media.thread, tr[id^='tr-thread-']",
@@ -223,6 +229,143 @@
         onerror: reject
       });
     });
+  }
+
+  /* ------------------ TMDB 海报获取功能 ------------------ */
+  // 解析标题提取影片信息
+  function parseMovieTitle(title) {
+    console.log('🔍 原始标题:', title);
+
+    // 常见的无效标签关键词（需要跳过）
+    const invalidTags = /^(BT下载|下载|字幕|简繁|中文|英文|双语|内封|内嵌|外挂|修复|修正|重发|转载|分享|发布|压制|小组|字幕组|WEB-?DL|WEBRip|BluRay|BDRip|REMUX|HD|SD|TS|TC|CAM|HD-?MP4|流媒体|无水印|[A-Z]{2,}QT|[A-Z]{2,}TV|[A-Z]{2,}HD)$/i;
+
+    // 提取年份（先提取，避免被清理掉）
+    const yearMatch = title.match(/(?:19|20)\d{2}/);
+    const year = yearMatch ? yearMatch[0] : null;
+
+    // 提取所有 [] 或 【】 中的内容
+    const allBrackets = title.match(/[【\[]([^【\[\]】]+)[】\]]/g);
+
+    // 提取中文片名
+    let chineseName = null;
+    if (allBrackets) {
+      for (const bracket of allBrackets) {
+        const content = bracket.replace(/[【\[\]】]/g, '');
+
+        // 跳过无效标签
+        if (invalidTags.test(content)) continue;
+
+        // 必须包含中文
+        if (!/[\u4e00-\u9fa5]/.test(content)) continue;
+
+        // 跳过质量标记
+        if (/^(4K|2160p|1080p|720p|480p|HDR|DV|DoVi|H\.?26[45]|HEVC|x26[45]|AAC|DTS|TrueHD|Atmos|第\d+[集季])$/i.test(content)) continue;
+
+        // 找到有效的中文片名
+        chineseName = content
+          .replace(/第\d+[集季]|\.第\d+[集季]|S\d+|E\d+/gi, '') // 去除季集信息
+          .replace(/\./g, ' ') // 将点替换为空格
+          .trim();
+
+        if (chineseName) break;
+      }
+    }
+
+    // 提取英文片名
+    let englishName = null;
+    if (allBrackets) {
+      for (const bracket of allBrackets) {
+        const content = bracket.replace(/[【\[\]】]/g, '');
+
+        // 跳过无效标签
+        if (invalidTags.test(content)) continue;
+
+        // 必须是英文（至少3个字母）
+        if (!/[A-Za-z]{3,}/.test(content)) continue;
+
+        // 必须不包含中文
+        if (/[\u4e00-\u9fa5]/.test(content)) continue;
+
+        // 跳过质量标记和格式
+        if (/^(WEB|BluRay|BDRip|REMUX|H\.?26[45]|HEVC|x26[45]|AAC|DTS|mkv|mp4|avi)$/i.test(content)) continue;
+
+        // 找到有效的英文片名
+        englishName = content
+          .replace(/S\d+|E\d+/gi, '') // 去除季集信息
+          .trim();
+
+        if (englishName && englishName.length >= 3) break;
+      }
+    }
+
+    console.log('📝 解析结果:', { chineseName, englishName, year });
+
+    return {
+      chineseName,
+      englishName,
+      year,
+      originalTitle: title
+    };
+  }
+
+  // 搜索 TMDB 获取海报
+  async function searchTMDB(movieInfo) {
+    const apiKey = getTMDBApiKey();
+
+    // 如果没有配置 API Key，静默返回 null（不是错误）
+    if (!apiKey) {
+      return null;
+    }
+
+    try {
+      const { chineseName, englishName, year } = movieInfo;
+
+      // 优先使用中文名搜索
+      let searchQuery = chineseName || englishName;
+      if (!searchQuery) return null;
+
+      const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${apiKey}&language=zh-CN&query=${encodeURIComponent(searchQuery)}${year ? `&year=${year}` : ''}`;
+
+      const response = await fetch(searchUrl);
+      if (!response.ok) throw new Error(`TMDB API Error: ${response.status}`);
+
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        // 优先选择电影类型，其次是电视剧
+        const result = data.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || data.results[0];
+
+        if (result.poster_path) {
+          const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
+          console.log('✅ TMDB海报获取成功:', posterUrl);
+          return posterUrl;
+        }
+      }
+
+      // 如果中文搜索失败且有英文名，尝试英文搜索
+      if (chineseName && englishName && chineseName !== englishName) {
+        const enSearchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${apiKey}&language=zh-CN&query=${encodeURIComponent(englishName)}${year ? `&year=${year}` : ''}`;
+        const enResponse = await fetch(enSearchUrl);
+
+        if (enResponse.ok) {
+          const enData = await enResponse.json();
+          if (enData.results && enData.results.length > 0) {
+            const result = enData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || enData.results[0];
+
+            if (result.poster_path) {
+              const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
+              console.log('✅ TMDB海报获取成功(英文):', posterUrl);
+              return posterUrl;
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ TMDB搜索失败:', error);
+      return null;
+    }
   }
 
   /* ------------------ 详情页磁力链接功能 ------------------ */
@@ -711,33 +854,46 @@
         }
       }
 
-      // 提取预览图
-      const mainContent = doc.querySelector('.message.break-all');
-      if (!mainContent) {
-        cardWrap.innerHTML = '<div class="card-no-image">📄 无图片</div>';
+      // 使用 TMDB 获取海报
+      const cardTitle = li.querySelector('.card-title');
+      const titleText = cardTitle ? cardTitle.textContent : '';
+      const apiKey = getTMDBApiKey();
+
+      // 检查是否配置了 TMDB API Key
+      if (!apiKey) {
+        cardWrap.innerHTML = '<div class="card-no-image">⚙️ 未配置TMDB</div>';
         return;
       }
 
-      const imageBlacklist = ['/avatar/', '/smiley/', '/rank/', '/filetype/', 'common/logo'];
-      const imgs = mainContent.querySelectorAll("img");
+      if (!titleText) {
+        cardWrap.innerHTML = '<div class="card-no-image">❌ 无标题</div>';
+        return;
+      }
 
-      for (const img of imgs) {
-        let src = img.getAttribute("src") || img.getAttribute("data-src");
-        if (!src || imageBlacklist.some(kw => src.includes(kw))) continue;
+      cardWrap.innerHTML = '<div class="card-loading"><div class="spinner"></div><div style="margin-top:8px;font-size:11px;">搜索海报...</div></div>';
+
+      // 解析标题并搜索 TMDB
+      const movieInfo = parseMovieTitle(titleText);
+      const posterUrl = await searchTMDB(movieInfo);
+
+      if (posterUrl) {
+        // 缓存海报URL
+        li.dataset.imageUrl = posterUrl;
+
+        cardWrap.innerHTML = '<div class="card-loading"><div class="spinner"></div><div style="margin-top:8px;font-size:11px;">加载海报...</div></div>';
 
         try {
-          src = new URL(src, url).href;
-          li.dataset.imageUrl = src;
-
-          cardWrap.innerHTML = '<div class="card-loading"><div class="spinner"></div><div style="margin-top:8px;font-size:11px;">加载图片...</div></div>';
-          await loadImage(li, src, url);
-          return;
+          await loadImage(li, posterUrl, url);
+          return; // TMDB 海报加载成功
         } catch (e) {
-          console.warn('图片加载失败:', e);
+          console.warn('❌ TMDB海报加载失败:', e);
+          cardWrap.innerHTML = '<div class="card-no-image">❌ 海报加载失败</div>';
+          return;
         }
       }
 
-      cardWrap.innerHTML = '<div class="card-no-image">📄 无图片</div>';
+      // TMDB 未找到海报
+      cardWrap.innerHTML = '<div class="card-no-image">🎬 未找到海报</div>';
 
     } catch (error) {
       console.error('数据获取失败:', url, error);
@@ -883,6 +1039,7 @@
     panel.id = "filterPanel";
     const includeKeywords = GM_getValue("includeKeywords", "2160p\n4K\nHDR");
     const excludeKeywords = GM_getValue("excludeKeywords", "国语配音\n合集");
+    const tmdbApiKey = getTMDBApiKey();
     const mobile = isMobile();
 
     panel.innerHTML = `
@@ -905,6 +1062,10 @@
       <div class="filter-section">
         <h4>必须排除 (支持正则, 每行一个)</h4>
         <textarea id="excludeKeywords" class="filter-textarea">${excludeKeywords}</textarea>
+      </div>
+      <div class="filter-section">
+        <h4>TMDB API Key (必需，获取: themoviedb.org)</h4>
+        <input type="text" id="tmdbApiKey" class="filter-textarea" style="height: 32px; font-family: monospace; font-size: 11px;" value="${tmdbApiKey}" placeholder="必须填入才能显示海报，否则显示占位符">
       </div>
       <div class="filter-buttons">
         <button id="saveFilters" class="filter-button">保存并应用</button>
@@ -976,8 +1137,11 @@
   function saveFilters() {
     const includeStr = document.getElementById("includeKeywords").value;
     const excludeStr = document.getElementById("excludeKeywords").value;
+    const tmdbApiKey = document.getElementById("tmdbApiKey").value.trim();
+
     GM_setValue("includeKeywords", includeStr);
     GM_setValue("excludeKeywords", excludeStr);
+    GM_setValue("tmdbApiKey", tmdbApiKey);
 
     const toRegex = (str) =>
       str.split(/[\n\r]+/).filter(k => k.trim()).map(k => {
