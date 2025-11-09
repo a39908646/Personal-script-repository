@@ -329,7 +329,8 @@
   // 根据 URL 判断内容类型（电影/电视剧）
   function getMediaTypeFromUrl(url) {
     // 优先从当前页面 URL 获取板块信息
-    const currentPageMatch = location.pathname.match(/forum-(\d+)-/);
+    // 匹配 forum-2.htm 或 forum-2-1.htm 格式
+    const currentPageMatch = location.pathname.match(/forum-(\d+)/);
     if (currentPageMatch) {
       const forumId = parseInt(currentPageMatch[1]);
       // forum-1, forum-3 是电影板块
@@ -339,7 +340,7 @@
     }
 
     // 如果当前页面不是论坛页，尝试从传入的 URL 解析
-    const match = url.match(/forum-(\d+)-/);
+    const match = url.match(/forum-(\d+)/);
     if (!match) return null;
 
     const forumId = parseInt(match[1]);
