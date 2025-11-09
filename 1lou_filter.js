@@ -33,8 +33,8 @@
     TMDB_IMAGE_BASE: "https://image.tmdb.org/t/p/w500",
   };
 
-  // 动态获取 TMDB API Key
-  const getTMDBApiKey = () => GM_getValue("tmdbApiKey", "");
+  // TMDB API Key（直接在这里配置）
+  const TMDB_API_KEY = ""; // 在这里填入你的 TMDB API Key
 
   const SELECTORS = {
     THREAD: "li.media.thread, tr[id^='tr-thread-']",
@@ -310,10 +310,8 @@
 
   // 搜索 TMDB 获取海报
   async function searchTMDB(movieInfo) {
-    const apiKey = getTMDBApiKey();
-
     // 如果没有配置 API Key，静默返回 null（不是错误）
-    if (!apiKey) {
+    if (!TMDB_API_KEY) {
       return null;
     }
 
@@ -324,7 +322,7 @@
       let searchQuery = chineseName || englishName;
       if (!searchQuery) return null;
 
-      const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${apiKey}&language=zh-CN&query=${encodeURIComponent(searchQuery)}${year ? `&year=${year}` : ''}`;
+      const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(searchQuery)}${year ? `&year=${year}` : ''}`;
 
       const response = await fetch(searchUrl);
       if (!response.ok) throw new Error(`TMDB API Error: ${response.status}`);
@@ -344,7 +342,7 @@
 
       // 如果中文搜索失败且有英文名，尝试英文搜索
       if (chineseName && englishName && chineseName !== englishName) {
-        const enSearchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${apiKey}&language=zh-CN&query=${encodeURIComponent(englishName)}${year ? `&year=${year}` : ''}`;
+        const enSearchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(englishName)}${year ? `&year=${year}` : ''}`;
         const enResponse = await fetch(enSearchUrl);
 
         if (enResponse.ok) {
@@ -857,10 +855,9 @@
       // 使用 TMDB 获取海报
       const cardTitle = li.querySelector('.card-title');
       const titleText = cardTitle ? cardTitle.textContent : '';
-      const apiKey = getTMDBApiKey();
 
       // 检查是否配置了 TMDB API Key
-      if (!apiKey) {
+      if (!TMDB_API_KEY) {
         cardWrap.innerHTML = '<div class="card-no-image">⚙️ 未配置TMDB</div>';
         return;
       }
@@ -1045,7 +1042,6 @@
     panel.id = "filterPanel";
     const includeKeywords = GM_getValue("includeKeywords", "2160p\n4K\nHDR");
     const excludeKeywords = GM_getValue("excludeKeywords", "国语配音\n合集");
-    const tmdbApiKey = getTMDBApiKey();
     const mobile = isMobile();
 
     panel.innerHTML = `
@@ -1070,10 +1066,6 @@
       <div class="filter-section">
         <h4>必须排除 (支持正则, 每行一个)</h4>
         <textarea id="excludeKeywords" class="filter-textarea">${excludeKeywords}</textarea>
-      </div>
-      <div class="filter-section">
-        <h4>TMDB API Key (必需，获取: themoviedb.org)</h4>
-        <input type="text" id="tmdbApiKey" class="filter-textarea" style="height: 32px; font-family: monospace; font-size: 11px;" value="${tmdbApiKey}" placeholder="必须填入才能显示海报，否则显示占位符">
       </div>
       <div class="filter-buttons">
         <button id="saveFilters" class="filter-button">保存并应用</button>
@@ -1148,11 +1140,9 @@
   function saveFilters() {
     const includeStr = document.getElementById("includeKeywords").value;
     const excludeStr = document.getElementById("excludeKeywords").value;
-    const tmdbApiKey = document.getElementById("tmdbApiKey").value.trim();
 
     GM_setValue("includeKeywords", includeStr);
     GM_setValue("excludeKeywords", excludeStr);
-    GM_setValue("tmdbApiKey", tmdbApiKey);
 
     const toRegex = (str) =>
       str.split(/[\n\r]+/).filter(k => k.trim()).map(k => {
