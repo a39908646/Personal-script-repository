@@ -34,7 +34,7 @@
   };
 
   // TMDB API Key（直接在这里配置）
-  const TMDB_API_KEY = ""; // 在这里填入你的 TMDB API Key
+  const TMDB_API_KEY = "8c2363f59129127cbb7653cb67b206e0"; // 在这里填入你的 TMDB API Key
 
   const SELECTORS = {
     THREAD: "li.media.thread, tr[id^='tr-thread-']",
@@ -237,7 +237,10 @@
     console.log('🔍 原始标题:', title);
 
     // 常见的无效标签关键词（需要跳过）
-    const invalidTags = /^(BT下载|下载|字幕|简繁|中文|英文|双语|内封|内嵌|外挂|修复|修正|重发|转载|分享|发布|压制|小组|字幕组|WEB-?DL|WEBRip|BluRay|BDRip|REMUX|HD|SD|TS|TC|CAM|HD-?MP4|流媒体|无水印|[A-Z]{2,}QT|[A-Z]{2,}TV|[A-Z]{2,}HD)$/i;
+    const invalidTags = /^(BT下载|下载|字幕|简繁|中文字幕|英文字幕|中英|双语|内封|内嵌|外挂|修复|修正|重发|转载|分享|发布|压制|小组|字幕组|国语配音|粤语配音|WEB-?DL|WEBRip|BluRay|BDRip|REMUX|WEB-MP4|HD-?MP4|流媒体|无水印|ColorTV|DoVi|HDR10?|第\d+[-~集季至话期]+|[A-Z]{2,}QT|[A-Z]{2,}TV|[A-Z]{2,}HD)$/i;
+
+    // 质量和格式标记（完全匹配）
+    const qualityTags = /^(4K|2160p|1080p|720p|480p|HDR|DV|DoVi|H\.?26[45]|HEVC|x26[45]|AAC|DTS|TrueHD|Atmos|第\d+[集季])$/i;
 
     // 提取年份（先提取，避免被清理掉）
     const yearMatch = title.match(/(?:19|20)\d{2}/);
@@ -259,15 +262,30 @@
         if (!/[\u4e00-\u9fa5]/.test(content)) continue;
 
         // 跳过质量标记
-        if (/^(4K|2160p|1080p|720p|480p|HDR|DV|DoVi|H\.?26[45]|HEVC|x26[45]|AAC|DTS|TrueHD|Atmos|第\d+[集季])$/i.test(content)) continue;
+        if (qualityTags.test(content)) continue;
 
-        // 找到有效的中文片名
-        chineseName = content
-          .replace(/第\d+[集季]|\.第\d+[集季]|S\d+|E\d+/gi, '') // 去除季集信息
-          .replace(/\./g, ' ') // 将点替换为空格
+        // 跳过包含斜杠的（通常是 "国语配音/中文字幕" 这种）
+        if (content.includes('/')) continue;
+
+        // 找到有效的中文片名（可能包含点号和季信息）
+        let cleanName = content;
+
+        // 检查是否包含季信息（如 "仙逆.第一季"）
+        const seasonMatch = cleanName.match(/^(.+?)\.第[一二三四五六七八九十\d]+季$/);
+        if (seasonMatch) {
+          cleanName = seasonMatch[1]; // 提取季信息前的片名
+        }
+
+        // 去除季集信息
+        cleanName = cleanName
+          .replace(/第\d+[集季]|\.第\d+[集季]|S\d+E?\d*|E\d+/gi, '')
+          .replace(/\./g, ' ')
           .trim();
 
-        if (chineseName) break;
+        if (cleanName && cleanName.length >= 2) {
+          chineseName = cleanName;
+          break;
+        }
       }
     }
 
@@ -291,7 +309,7 @@
 
         // 找到有效的英文片名
         englishName = content
-          .replace(/S\d+|E\d+/gi, '') // 去除季集信息
+          .replace(/S\d+E?\d*|E\d+/gi, '') // 去除季集信息
           .trim();
 
         if (englishName && englishName.length >= 3) break;
@@ -308,8 +326,31 @@
     };
   }
 
+  // 根据 URL 判断内容类型（电影/电视剧）
+  function getMediaTypeFromUrl(url) {
+    // 优先从当前页面 URL 获取板块信息
+    const currentPageMatch = location.pathname.match(/forum-(\d+)-/);
+    if (currentPageMatch) {
+      const forumId = parseInt(currentPageMatch[1]);
+      // forum-1, forum-3 是电影板块
+      // forum-2, forum-4 是电视剧板块
+      if (forumId === 1 || forumId === 3) return 'movie';
+      if (forumId === 2 || forumId === 4) return 'tv';
+    }
+
+    // 如果当前页面不是论坛页，尝试从传入的 URL 解析
+    const match = url.match(/forum-(\d+)-/);
+    if (!match) return null;
+
+    const forumId = parseInt(match[1]);
+    if (forumId === 1 || forumId === 3) return 'movie';
+    if (forumId === 2 || forumId === 4) return 'tv';
+
+    return null;
+  }
+
   // 搜索 TMDB 获取海报
-  async function searchTMDB(movieInfo) {
+  async function searchTMDB(movieInfo, threadUrl = null) {
     // 如果没有配置 API Key，静默返回 null（不是错误）
     if (!TMDB_API_KEY) {
       return null;
@@ -322,6 +363,10 @@
       let searchQuery = chineseName || englishName;
       if (!searchQuery) return null;
 
+      // 根据 URL 判断内容类型
+      const preferredType = threadUrl ? getMediaTypeFromUrl(threadUrl) : null;
+      console.log('🎯 内容类型判断:', preferredType, '(来源URL:', threadUrl, ')');
+
       const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(searchQuery)}${year ? `&year=${year}` : ''}`;
 
       const response = await fetch(searchUrl);
@@ -330,12 +375,21 @@
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        // 优先选择电影类型，其次是电视剧
-        const result = data.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || data.results[0];
+        // 如果有明确的类型偏好，优先选择该类型
+        let result;
+        if (preferredType) {
+          result = data.results.find(r => r.media_type === preferredType);
+          console.log(`🔍 优先查找 ${preferredType} 类型:`, result ? '找到' : '未找到');
+        }
 
-        if (result.poster_path) {
+        // 如果没有找到偏好类型，使用默认逻辑
+        if (!result) {
+          result = data.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || data.results[0];
+        }
+
+        if (result && result.poster_path) {
           const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
-          console.log('✅ TMDB海报获取成功:', posterUrl);
+          console.log('✅ TMDB海报获取成功:', posterUrl, `(类型: ${result.media_type})`);
           return posterUrl;
         }
       }
@@ -348,11 +402,19 @@
         if (enResponse.ok) {
           const enData = await enResponse.json();
           if (enData.results && enData.results.length > 0) {
-            const result = enData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || enData.results[0];
+            // 同样应用类型偏好
+            let result;
+            if (preferredType) {
+              result = enData.results.find(r => r.media_type === preferredType);
+            }
 
-            if (result.poster_path) {
+            if (!result) {
+              result = enData.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || enData.results[0];
+            }
+
+            if (result && result.poster_path) {
               const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
-              console.log('✅ TMDB海报获取成功(英文):', posterUrl);
+              console.log('✅ TMDB海报获取成功(英文):', posterUrl, `(类型: ${result.media_type})`);
               return posterUrl;
             }
           }
@@ -869,9 +931,9 @@
 
       cardWrap.innerHTML = '<div class="card-loading"><div class="spinner"></div><div style="margin-top:8px;font-size:11px;">搜索海报...</div></div>';
 
-      // 解析标题并搜索 TMDB
+      // 解析标题并搜索 TMDB（传入 URL 用于判断类型）
       const movieInfo = parseMovieTitle(titleText);
-      const posterUrl = await searchTMDB(movieInfo);
+      const posterUrl = await searchTMDB(movieInfo, url);
 
       if (posterUrl) {
         // 缓存海报URL
