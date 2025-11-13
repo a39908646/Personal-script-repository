@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         草榴社区显示优化、过滤
 // @namespace    http://tampermonkey.net/
-// @version      6.2.0
-// @description  【正则模式】超时自动重试 | 一键重试按钮 | 帖子并发控制 | 分批懒加载 | 标记已阅 | 批量标记
+// @version      6.5.0
+// @description  【正则模式】超时自动重试 | 一键重试按钮 | 帖子并发控制 | 分批懒加载 | 标记已阅 | 批量标记 | 自动清理过期记录
 // @match        https://*.t66y.com/thread*
 // @match        https://t66y.com/thread*
 // @grant        GM_getValue
@@ -21,33 +21,41 @@ const BATCH_SIZE = 6;                // 每个帖子每批次加载的图片数�
 const MAX_CONCURRENT_POSTS = 2;      // 同时加载预览图的帖子数量上限
 const IMAGE_LOAD_TIMEOUT = 10000;    // 图片加载超时时间（毫秒）
 const MAX_RETRY_COUNT = 2;           // 图片加载失败最大自动重试次数
+const READ_EXPIRE_DAYS = 30;         // 已阅记录过期天数（默认30天）
 
 // ================================================================= //
 //                       ★ 存储配置 ★
 // ================================================================= //
 
 const EXCLUDE_KEY = "excludeKeywords";
-const INCLUDE_KEY = "includeKeywords";
 const PANEL_STATE_KEY = "filterPanelMinimized";
 const FILTER_ENABLED_KEY = "filterEnabled";
 const READ_POSTS_KEY = "readPosts";
-const READ_MARK_ENABLED_KEY = "readMarkEnabled";
 
 // --- 存取函数 ---
 const getExcludeKeywords = () => GM_getValue(EXCLUDE_KEY, []);
 const setExcludeKeywords = (list) => GM_setValue(EXCLUDE_KEY, list);
-const getIncludeKeywords = () => GM_getValue(INCLUDE_KEY, []);
-const setIncludeKeywords = (list) => GM_setValue(INCLUDE_KEY, list);
 const getPanelState = () => GM_getValue(PANEL_STATE_KEY, "max");
 const setPanelState = (state) => GM_setValue(PANEL_STATE_KEY, state);
 const getFilterEnabled = () => GM_getValue(FILTER_ENABLED_KEY, true);
 const setFilterEnabled = (isEnabled) => GM_setValue(FILTER_ENABLED_KEY, isEnabled);
-const getReadPosts = () => new Set(GM_getValue(READ_POSTS_KEY, []));
-const saveReadPosts = (set) => GM_setValue(READ_POSTS_KEY, [...set]);
-const getReadMarkEnabled = () => GM_getValue(READ_MARK_ENABLED_KEY, true);
-const setReadMarkEnabled = (isEnabled) => GM_setValue(READ_MARK_ENABLED_KEY, isEnabled);
 
-let excludeKeywords, includeKeywords, isFilterEnabled, readPosts, isReadMarkEnabled;
+// 已阅记录存储结构: { postId: timestamp }
+const getReadPosts = () => {
+    const data = GM_getValue(READ_POSTS_KEY, {});
+    // 兼容旧版本：如果是数组格式，转换为对象格式
+    if (Array.isArray(data)) {
+        const now = Date.now();
+        const obj = {};
+        data.forEach(id => obj[id] = now);
+        GM_setValue(READ_POSTS_KEY, obj);
+        return obj;
+    }
+    return data;
+};
+const saveReadPosts = (obj) => GM_setValue(READ_POSTS_KEY, obj);
+
+let excludeKeywords, isFilterEnabled, readPosts;
 
 // --- 全局数据存储 ---
 const previewDataStore = new Map();
@@ -80,8 +88,8 @@ function getPostId(linkElement) {
  * @param {string} postId - 帖子ID
  */
 function markPostAsRead(postId) {
-    if (!postId || !isReadMarkEnabled) return;
-    readPosts.add(postId);
+    if (!postId) return;
+    readPosts[postId] = Date.now();
     saveReadPosts(readPosts);
 }
 
@@ -91,7 +99,41 @@ function markPostAsRead(postId) {
  * @returns {boolean}
  */
 function isPostRead(postId) {
-    return postId && readPosts.has(postId);
+    return postId && postId in readPosts;
+}
+
+/**
+ * 清理过期的已阅记录
+ * @returns {number} 清理的记录数
+ */
+function cleanExpiredReadPosts() {
+    const now = Date.now();
+    const expireTime = READ_EXPIRE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
+    let cleanedCount = 0;
+
+    Object.keys(readPosts).forEach(postId => {
+        const timestamp = readPosts[postId];
+        // 如果记录超过过期时间，或者时间戳无效
+        if (!timestamp || (now - timestamp) > expireTime) {
+            delete readPosts[postId];
+            cleanedCount++;
+        }
+    });
+
+    if (cleanedCount > 0) {
+        saveReadPosts(readPosts);
+        console.log(`🧹 已清理 ${cleanedCount} 条过期的已阅记录 (${READ_EXPIRE_DAYS}天前)`);
+    }
+
+    return cleanedCount;
+}
+
+/**
+ * 获取已阅记录数量
+ * @returns {number}
+ */
+function getReadPostsCount() {
+    return Object.keys(readPosts).length;
 }
 
 /**
@@ -100,7 +142,7 @@ function isPostRead(postId) {
  * @param {string} postId - 帖子ID
  */
 function applyReadStyle(tr, postId) {
-    if (!isReadMarkEnabled || !isPostRead(postId)) return;
+    if (!isPostRead(postId)) return;
 
     const titleLink = tr.querySelector("td.tal h3 a");
     if (!titleLink) return;
@@ -124,7 +166,7 @@ function applyReadStyle(tr, postId) {
  */
 function clearAllReadPosts() {
     if (confirm('确定要清除所有已阅记录吗？')) {
-        readPosts.clear();
+        readPosts = {};
         saveReadPosts(readPosts);
         // 刷新页面以更新显示
         location.reload();
@@ -136,57 +178,20 @@ function clearAllReadPosts() {
  */
 function markAllPostsAsRead() {
     let count = 0;
+    const now = Date.now();
     document.querySelectorAll("#tbody > tr").forEach(tr => {
         const titleLink = tr.querySelector("td.tal h3 a");
         const postId = getPostId(titleLink);
         if (postId && !isPostRead(postId)) {
-            markPostAsRead(postId);
+            readPosts[postId] = now;
             applyReadStyle(tr, postId);
             count++;
         }
     });
-    alert(`已标记 ${count} 个帖子为已阅`);
-}
-
-/**
- * 批量标记当前可见（未被过滤）的帖子为已阅
- */
-function markVisiblePostsAsRead() {
-    let count = 0;
-    document.querySelectorAll("#tbody > tr").forEach(tr => {
-        // 只标记可见的帖子
-        if (tr.style.display !== 'none') {
-            const titleLink = tr.querySelector("td.tal h3 a");
-            const postId = getPostId(titleLink);
-            if (postId && !isPostRead(postId)) {
-                markPostAsRead(postId);
-                applyReadStyle(tr, postId);
-                count++;
-            }
-        }
-    });
-    alert(`已标记 ${count} 个可见帖子为已阅`);
-}
-
-/**
- * 批量取消当前页已阅标记
- */
-function unmarkAllPostsAsRead() {
-    if (!confirm('确定要取消当前页所有已阅标记吗？')) {
-        return;
+    if (count > 0) {
+        saveReadPosts(readPosts);
+        alert(`已标记 ${count} 个帖子为已阅`);
     }
-    let count = 0;
-    document.querySelectorAll("#tbody > tr").forEach(tr => {
-        const titleLink = tr.querySelector("td.tal h3 a");
-        const postId = getPostId(titleLink);
-        if (postId && isPostRead(postId)) {
-            readPosts.delete(postId);
-            count++;
-        }
-    });
-    saveReadPosts(readPosts);
-    alert(`已取消 ${count} 个帖子的已阅标记`);
-    location.reload();
 }
 
 // ================================================================= //
@@ -412,10 +417,11 @@ const postQueue = new PostLoadQueue(MAX_CONCURRENT_POSTS);
 
 function initListPage() {
     excludeKeywords = getExcludeKeywords();
-    includeKeywords = getIncludeKeywords();
     isFilterEnabled = getFilterEnabled();
     readPosts = getReadPosts();
-    isReadMarkEnabled = getReadMarkEnabled();
+
+    // 自动清理过期的已阅记录
+    cleanExpiredReadPosts();
 
     injectStyles();
 
@@ -480,8 +486,8 @@ function processPostRow(tr) {
         }
     }
 
-    // 如果帖子已阅且启用了已阅标记，跳过预览图加载
-    if (isReadMarkEnabled && isPostRead(postId)) {
+    // 如果帖子已阅，跳过预览图加载
+    if (isPostRead(postId)) {
         return;
     }
 
@@ -529,10 +535,6 @@ function applyFilterToRow(tr) {
     const titleText = titleDom.textContent || "";
 
     try {
-        if (includeKeywords.length > 0 && includeKeywords.some(kw => kw && new RegExp(kw, 'i').test(titleText))) {
-            tr.style.display = "";
-            return;
-        }
         tr.style.display = excludeKeywords.some(kw => kw && new RegExp(kw, 'i').test(titleText)) ? "none" : "";
     } catch (e) {
         console.error("无效的正则表达式:", e.message);
@@ -720,58 +722,17 @@ function buildPanel() {
                 </div>
             </h3>
         </header>
-        <div class="load-stats">
-            <div class="stat-row">
-                <span class="stat-label">获取列表中:</span>
-                <span class="stat-value active" id="stat-loading">0</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">排队中:</span>
-                <span class="stat-value" id="stat-queued">0</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">并发上限:</span>
-                <span class="stat-value">${MAX_CONCURRENT_POSTS}</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">图片超时:</span>
-                <span class="stat-value">${IMAGE_LOAD_TIMEOUT/1000}秒</span>
-            </div>
-            <div class="stat-row">
-                <span class="stat-label">自动重试:</span>
-                <span class="stat-value">${MAX_RETRY_COUNT}次</span>
-            </div>
-        </div>
         <section id="read-mark-section">
             <h4 class="read-mark">已阅标记</h4>
             <div class="read-mark-controls">
-                <label class="control-row">
-                    <span>启用已阅标记</span>
-                    <label class="switch switch-small">
-                        <input type="checkbox" id="read-mark-toggle">
-                        <span class="slider"></span>
-                    </label>
-                </label>
                 <div class="read-stats">
                     <span class="stat-label">已阅帖子:</span>
                     <span class="stat-value" id="read-count">0</span>
                 </div>
                 <div class="batch-buttons">
                     <button id="mark-all-btn" class="batch-btn batch-btn-primary" title="标记本页所有帖子为已阅">全部标记</button>
-                    <button id="mark-visible-btn" class="batch-btn batch-btn-secondary" title="只标记未被过滤的帖子">标记可见</button>
-                </div>
-                <div class="batch-buttons">
-                    <button id="unmark-all-btn" class="batch-btn batch-btn-warning" title="取消本页所有已阅标记">取消本页</button>
                     <button id="clear-read-btn" class="batch-btn batch-btn-danger" title="清除全部历史已阅记录">清空全部</button>
                 </div>
-            </div>
-        </section>
-        <section id="include-section">
-            <h4 class="include">保留关键词 (优先)</h4>
-            <div id="include-kw-list" class="kw-list"></div>
-            <div class="input-wrapper">
-                <input type="text" id="include-kw-input" placeholder="输入正则表达式..."/>
-                <button data-type="include" class="add-kw-btn">添加</button>
             </div>
         </section>
         <section id="exclude-section">
@@ -819,93 +780,61 @@ function buildPanel() {
     });
 
     // 已阅标记功能控制
-    const readMarkToggle = panel.querySelector("#read-mark-toggle");
     const readCountEl = panel.querySelector("#read-count");
     const clearReadBtn = panel.querySelector("#clear-read-btn");
     const markAllBtn = panel.querySelector("#mark-all-btn");
-    const markVisibleBtn = panel.querySelector("#mark-visible-btn");
-    const unmarkAllBtn = panel.querySelector("#unmark-all-btn");
 
-    readMarkToggle.checked = isReadMarkEnabled;
-    readCountEl.textContent = readPosts.size;
-
-    readMarkToggle.addEventListener("change", () => {
-        isReadMarkEnabled = readMarkToggle.checked;
-        setReadMarkEnabled(isReadMarkEnabled);
-        // 刷新页面以更新显示
-        location.reload();
-    });
+    readCountEl.textContent = getReadPostsCount();
 
     // 批量操作按钮
     markAllBtn.addEventListener("click", markAllPostsAsRead);
-    markVisibleBtn.addEventListener("click", markVisiblePostsAsRead);
-    unmarkAllBtn.addEventListener("click", unmarkAllPostsAsRead);
     clearReadBtn.addEventListener("click", clearAllReadPosts);
 
     // 定期更新已阅计数
     setInterval(() => {
-        readCountEl.textContent = readPosts.size;
+        readCountEl.textContent = getReadPostsCount();
     }, 1000);
 
-    const includeListDiv = panel.querySelector("#include-kw-list");
     const excludeListDiv = panel.querySelector("#exclude-kw-list");
 
-    const renderKeywords = (type) => {
-        const [keywords, listDiv] = type === 'include'
-            ? [includeKeywords, includeListDiv]
-            : [excludeKeywords, excludeListDiv];
-        listDiv.innerHTML = "";
-        keywords.forEach((kw, i) => {
+    const renderKeywords = () => {
+        excludeListDiv.innerHTML = "";
+        excludeKeywords.forEach((kw, i) => {
             const row = document.createElement("div");
             row.className = "kw";
-            row.innerHTML = `<span class="kw-text" title="${kw}">${kw}</span><button data-type="${type}" data-idx="${i}">✖</button>`;
-            row.querySelector("button").onclick = (e) => handleRemoveKeyword(e.target.dataset.type, e.target.dataset.idx);
-            listDiv.appendChild(row);
+            row.innerHTML = `<span class="kw-text" title="${kw}">${kw}</span><button data-idx="${i}">✖</button>`;
+            row.querySelector("button").onclick = (e) => handleRemoveKeyword(e.target.dataset.idx);
+            excludeListDiv.appendChild(row);
         });
     };
 
-    const handleAddKeyword = (type) => {
-        const [inputEl, keywords, setter] = type === 'include'
-            ? [panel.querySelector("#include-kw-input"), includeKeywords, setIncludeKeywords]
-            : [panel.querySelector("#exclude-kw-input"), excludeKeywords, setExcludeKeywords];
+    const handleAddKeyword = () => {
+        const inputEl = panel.querySelector("#exclude-kw-input");
         const kw = inputEl.value.trim();
-        if (kw && !keywords.includes(kw)) {
-            keywords.push(kw);
-            setter(keywords);
-            renderKeywords(type);
+        if (kw && !excludeKeywords.includes(kw)) {
+            excludeKeywords.push(kw);
+            setExcludeKeywords(excludeKeywords);
+            renderKeywords();
             applyFilterToAll();
             inputEl.value = "";
         }
     };
 
-    const handleRemoveKeyword = (type, index) => {
-        const [keywords, setter] = type === 'include'
-            ? [includeKeywords, setIncludeKeywords]
-            : [excludeKeywords, setExcludeKeywords];
-        keywords.splice(index, 1);
-        setter(keywords);
-        renderKeywords(type);
+    const handleRemoveKeyword = (index) => {
+        excludeKeywords.splice(index, 1);
+        setExcludeKeywords(excludeKeywords);
+        renderKeywords();
         applyFilterToAll();
     };
 
-    panel.querySelectorAll('.add-kw-btn').forEach(btn => btn.addEventListener('click', (e) => handleAddKeyword(e.target.dataset.type)));
-    panel.querySelectorAll('input[type="text"]').forEach(input => input.addEventListener('keyup', (e) => {
+    panel.querySelector('.add-kw-btn').addEventListener('click', handleAddKeyword);
+    panel.querySelector('#exclude-kw-input').addEventListener('keyup', (e) => {
         if (e.key === 'Enter') {
-            const type = e.target.id.includes('include') ? 'include' : 'exclude';
-            handleAddKeyword(type);
+            handleAddKeyword();
         }
-    }));
+    });
 
-    renderKeywords('include');
-    renderKeywords('exclude');
-
-    setInterval(() => {
-        const status = postQueue.getStatus();
-        const loadingEl = document.getElementById('stat-loading');
-        const queuedEl = document.getElementById('stat-queued');
-        if (loadingEl) loadingEl.textContent = status.loading;
-        if (queuedEl) queuedEl.textContent = status.queued;
-    }, 500);
+    renderKeywords();
 }
 
 function injectStyles() {
@@ -1089,7 +1018,6 @@ function injectStyles() {
         .filter-panel { position: fixed; top: 80px; right: 20px; background: #fafafa; color: #333; padding: 10px 12px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); font-size: 13px; z-index: 9999; width: 240px; font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 5px; }
         .filter-panel h3 { margin: 0 0 8px 0; font-size: 13px; font-weight: 600; color: #222; display: flex; justify-content: space-between; align-items: center; }
         .filter-panel h4 { margin: 8px 0 4px 0; font-size: 12px; font-weight: 600; color: #555; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-        .filter-panel h4.include { color: #27ae60; }
         .filter-panel h4.exclude { color: #c0392b; }
         .filter-panel h4.read-mark { color: #3498db; }
         .panel-controls { display: flex; align-items: center; gap: 8px; }
@@ -1124,24 +1052,6 @@ function injectStyles() {
             flex-direction: column;
             gap: 8px;
             padding: 6px 0;
-        }
-        .control-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .switch-small {
-            width: 30px;
-            height: 16px;
-        }
-        .switch-small .slider:before {
-            height: 10px;
-            width: 10px;
-        }
-        .switch-small input:checked + .slider:before {
-            transform: translateX(14px);
         }
         .read-stats {
             display: flex;
@@ -1178,24 +1088,6 @@ function injectStyles() {
             transform: translateY(-1px);
             box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
         }
-        .batch-btn-secondary {
-            background: #27ae60;
-            color: white;
-        }
-        .batch-btn-secondary:hover {
-            background: #229954;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(39, 174, 96, 0.3);
-        }
-        .batch-btn-warning {
-            background: #f39c12;
-            color: white;
-        }
-        .batch-btn-warning:hover {
-            background: #d68910;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(243, 156, 18, 0.3);
-        }
         .batch-btn-danger {
             background: #e74c3c;
             color: white;
@@ -1208,34 +1100,6 @@ function injectStyles() {
         .batch-btn:active {
             transform: translateY(0);
         }
-
-        /* 已弃用的样式，保留以防兼容性问题 */
-        .clear-btn {
-            padding: 6px 12px;
-            background: #e74c3c;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-        .clear-btn:hover {
-            background: #c0392b;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.3);
-        }
-        .clear-btn:active {
-            transform: translateY(0);
-        }
-
-        /* 加载统计 */
-        .load-stats { font-size: 11px; color: #666; padding: 6px 8px; background: #f5f5f5; border-radius: 4px; text-align: center; margin-top: 4px; line-height: 1.4; }
-        .load-stats .stat-row { display: flex; justify-content: space-between; margin: 2px 0; }
-        .load-stats .stat-label { color: #999; }
-        .load-stats .stat-value { font-weight: 600; color: #333; }
-        .load-stats .stat-value.active { color: #4CAF50; }
     `;
     document.head.appendChild(listStyle);
 }
