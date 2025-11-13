@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         草榴社区显示优化、过滤
 // @namespace    http://tampermonkey.net/
-// @version      6.0.0
-// @description  【正则模式】超时自动重试 | 一键重试按钮 | 帖子并发控制 | 分批懒加载
+// @version      6.2.0
+// @description  【正则模式】超时自动重试 | 一键重试按钮 | 帖子并发控制 | 分批懒加载 | 标记已阅 | 批量标记
 // @match        https://*.t66y.com/thread*
 // @match        https://t66y.com/thread*
 // @grant        GM_getValue
@@ -30,6 +30,8 @@ const EXCLUDE_KEY = "excludeKeywords";
 const INCLUDE_KEY = "includeKeywords";
 const PANEL_STATE_KEY = "filterPanelMinimized";
 const FILTER_ENABLED_KEY = "filterEnabled";
+const READ_POSTS_KEY = "readPosts";
+const READ_MARK_ENABLED_KEY = "readMarkEnabled";
 
 // --- 存取函数 ---
 const getExcludeKeywords = () => GM_getValue(EXCLUDE_KEY, []);
@@ -40,14 +42,152 @@ const getPanelState = () => GM_getValue(PANEL_STATE_KEY, "max");
 const setPanelState = (state) => GM_setValue(PANEL_STATE_KEY, state);
 const getFilterEnabled = () => GM_getValue(FILTER_ENABLED_KEY, true);
 const setFilterEnabled = (isEnabled) => GM_setValue(FILTER_ENABLED_KEY, isEnabled);
+const getReadPosts = () => new Set(GM_getValue(READ_POSTS_KEY, []));
+const saveReadPosts = (set) => GM_setValue(READ_POSTS_KEY, [...set]);
+const getReadMarkEnabled = () => GM_getValue(READ_MARK_ENABLED_KEY, true);
+const setReadMarkEnabled = (isEnabled) => GM_setValue(READ_MARK_ENABLED_KEY, isEnabled);
 
-let excludeKeywords, includeKeywords, isFilterEnabled;
+let excludeKeywords, includeKeywords, isFilterEnabled, readPosts, isReadMarkEnabled;
 
 // --- 全局数据存储 ---
 const previewDataStore = new Map();
 
 // --- 观察者 ---
 let imageObserver, sentinelObserver, postObserver;
+
+// ================================================================= //
+//                    ★ 标记已阅功能 ★
+// ================================================================= //
+
+/**
+ * 从链接元素提取帖子ID
+ * @param {HTMLAnchorElement} linkElement - 帖子标题链接
+ * @returns {string|null} 帖子ID
+ */
+function getPostId(linkElement) {
+    if (!linkElement) return null;
+    // 从 id 属性提取: "t7018236" -> "7018236"
+    if (linkElement.id && linkElement.id.startsWith('t')) {
+        return linkElement.id.replace('t', '');
+    }
+    // 备用方案: 从 href 提取
+    const match = linkElement.href.match(/\/(\d+)\.html/);
+    return match ? match[1] : null;
+}
+
+/**
+ * 标记帖子为已阅
+ * @param {string} postId - 帖子ID
+ */
+function markPostAsRead(postId) {
+    if (!postId || !isReadMarkEnabled) return;
+    readPosts.add(postId);
+    saveReadPosts(readPosts);
+}
+
+/**
+ * 检查帖子是否已阅
+ * @param {string} postId - 帖子ID
+ * @returns {boolean}
+ */
+function isPostRead(postId) {
+    return postId && readPosts.has(postId);
+}
+
+/**
+ * 应用已阅样式到帖子行
+ * @param {HTMLElement} tr - 帖子行元素
+ * @param {string} postId - 帖子ID
+ */
+function applyReadStyle(tr, postId) {
+    if (!isReadMarkEnabled || !isPostRead(postId)) return;
+
+    const titleLink = tr.querySelector("td.tal h3 a");
+    if (!titleLink) return;
+
+    // 添加已阅类名
+    tr.classList.add('post-read');
+    titleLink.classList.add('read-title');
+
+    // 添加已阅标记
+    if (!titleLink.querySelector('.read-mark')) {
+        const mark = document.createElement('span');
+        mark.className = 'read-mark';
+        mark.textContent = ' ✓';
+        mark.title = '已阅';
+        titleLink.appendChild(mark);
+    }
+}
+
+/**
+ * 清除所有已阅记录
+ */
+function clearAllReadPosts() {
+    if (confirm('确定要清除所有已阅记录吗？')) {
+        readPosts.clear();
+        saveReadPosts(readPosts);
+        // 刷新页面以更新显示
+        location.reload();
+    }
+}
+
+/**
+ * 批量标记当前页所有帖子为已阅
+ */
+function markAllPostsAsRead() {
+    let count = 0;
+    document.querySelectorAll("#tbody > tr").forEach(tr => {
+        const titleLink = tr.querySelector("td.tal h3 a");
+        const postId = getPostId(titleLink);
+        if (postId && !isPostRead(postId)) {
+            markPostAsRead(postId);
+            applyReadStyle(tr, postId);
+            count++;
+        }
+    });
+    alert(`已标记 ${count} 个帖子为已阅`);
+}
+
+/**
+ * 批量标记当前可见（未被过滤）的帖子为已阅
+ */
+function markVisiblePostsAsRead() {
+    let count = 0;
+    document.querySelectorAll("#tbody > tr").forEach(tr => {
+        // 只标记可见的帖子
+        if (tr.style.display !== 'none') {
+            const titleLink = tr.querySelector("td.tal h3 a");
+            const postId = getPostId(titleLink);
+            if (postId && !isPostRead(postId)) {
+                markPostAsRead(postId);
+                applyReadStyle(tr, postId);
+                count++;
+            }
+        }
+    });
+    alert(`已标记 ${count} 个可见帖子为已阅`);
+}
+
+/**
+ * 批量取消当前页已阅标记
+ */
+function unmarkAllPostsAsRead() {
+    if (!confirm('确定要取消当前页所有已阅标记吗？')) {
+        return;
+    }
+    let count = 0;
+    document.querySelectorAll("#tbody > tr").forEach(tr => {
+        const titleLink = tr.querySelector("td.tal h3 a");
+        const postId = getPostId(titleLink);
+        if (postId && isPostRead(postId)) {
+            readPosts.delete(postId);
+            count++;
+        }
+    });
+    saveReadPosts(readPosts);
+    alert(`已取消 ${count} 个帖子的已阅标记`);
+    location.reload();
+}
 
 // ================================================================= //
 //                    ★ 图片加载超时控制（带自动重试）★
@@ -274,6 +414,8 @@ function initListPage() {
     excludeKeywords = getExcludeKeywords();
     includeKeywords = getIncludeKeywords();
     isFilterEnabled = getFilterEnabled();
+    readPosts = getReadPosts();
+    isReadMarkEnabled = getReadMarkEnabled();
 
     injectStyles();
 
@@ -320,6 +462,29 @@ function processPostRow(tr) {
         return;
     }
 
+    // 获取帖子ID并应用已阅样式
+    const titleLink = tr.querySelector("td.tal h3 a");
+    const postId = getPostId(titleLink);
+
+    // 应用已阅样式
+    if (postId) {
+        applyReadStyle(tr, postId);
+
+        // 添加点击事件监听，标记为已阅
+        if (titleLink && !titleLink.dataset.readListenerAdded) {
+            titleLink.addEventListener('click', () => {
+                markPostAsRead(postId);
+                applyReadStyle(tr, postId);
+            });
+            titleLink.dataset.readListenerAdded = 'true';
+        }
+    }
+
+    // 如果帖子已阅且启用了已阅标记，跳过预览图加载
+    if (isReadMarkEnabled && isPostRead(postId)) {
+        return;
+    }
+
     preparePreviewContainer(tr);
 
     const item = tr.querySelector("td.tal");
@@ -328,10 +493,10 @@ function processPostRow(tr) {
     const wrap = item.querySelector(".preview-wrapper");
     if (!wrap) return;
 
-    const postId = `post_${Math.random().toString(36).substr(2, 9)}`;
-    wrap.dataset.postId = postId;
+    const queueId = `post_${Math.random().toString(36).substr(2, 9)}`;
+    wrap.dataset.postId = queueId;
 
-    postQueue.requestLoad(postId, tr);
+    postQueue.requestLoad(queueId, tr);
 }
 
 // ================================================================= //
@@ -577,6 +742,30 @@ function buildPanel() {
                 <span class="stat-value">${MAX_RETRY_COUNT}次</span>
             </div>
         </div>
+        <section id="read-mark-section">
+            <h4 class="read-mark">已阅标记</h4>
+            <div class="read-mark-controls">
+                <label class="control-row">
+                    <span>启用已阅标记</span>
+                    <label class="switch switch-small">
+                        <input type="checkbox" id="read-mark-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <div class="read-stats">
+                    <span class="stat-label">已阅帖子:</span>
+                    <span class="stat-value" id="read-count">0</span>
+                </div>
+                <div class="batch-buttons">
+                    <button id="mark-all-btn" class="batch-btn batch-btn-primary" title="标记本页所有帖子为已阅">全部标记</button>
+                    <button id="mark-visible-btn" class="batch-btn batch-btn-secondary" title="只标记未被过滤的帖子">标记可见</button>
+                </div>
+                <div class="batch-buttons">
+                    <button id="unmark-all-btn" class="batch-btn batch-btn-warning" title="取消本页所有已阅标记">取消本页</button>
+                    <button id="clear-read-btn" class="batch-btn batch-btn-danger" title="清除全部历史已阅记录">清空全部</button>
+                </div>
+            </div>
+        </section>
         <section id="include-section">
             <h4 class="include">保留关键词 (优先)</h4>
             <div id="include-kw-list" class="kw-list"></div>
@@ -628,6 +817,35 @@ function buildPanel() {
         setFilterEnabled(isFilterEnabled);
         applyFilterToAll();
     });
+
+    // 已阅标记功能控制
+    const readMarkToggle = panel.querySelector("#read-mark-toggle");
+    const readCountEl = panel.querySelector("#read-count");
+    const clearReadBtn = panel.querySelector("#clear-read-btn");
+    const markAllBtn = panel.querySelector("#mark-all-btn");
+    const markVisibleBtn = panel.querySelector("#mark-visible-btn");
+    const unmarkAllBtn = panel.querySelector("#unmark-all-btn");
+
+    readMarkToggle.checked = isReadMarkEnabled;
+    readCountEl.textContent = readPosts.size;
+
+    readMarkToggle.addEventListener("change", () => {
+        isReadMarkEnabled = readMarkToggle.checked;
+        setReadMarkEnabled(isReadMarkEnabled);
+        // 刷新页面以更新显示
+        location.reload();
+    });
+
+    // 批量操作按钮
+    markAllBtn.addEventListener("click", markAllPostsAsRead);
+    markVisibleBtn.addEventListener("click", markVisiblePostsAsRead);
+    unmarkAllBtn.addEventListener("click", unmarkAllPostsAsRead);
+    clearReadBtn.addEventListener("click", clearAllReadPosts);
+
+    // 定期更新已阅计数
+    setInterval(() => {
+        readCountEl.textContent = readPosts.size;
+    }, 1000);
 
     const includeListDiv = panel.querySelector("#include-kw-list");
     const excludeListDiv = panel.querySelector("#exclude-kw-list");
@@ -714,6 +932,23 @@ function injectStyles() {
         .preview-wrapper img[src]:not([src=""]) { opacity: 1; }
         .preview-wrapper img:hover { opacity: 0.85; }
         .preview-sentinel { width: 100%; height: 40px; flex-shrink: 0; }
+
+        /* 已阅帖子样式 */
+        .post-read {
+            opacity: 0.6;
+        }
+        .read-title {
+            color: #999 !important;
+            text-decoration: none;
+        }
+        .read-title:visited {
+            color: #999 !important;
+        }
+        .read-mark {
+            color: #4CAF50;
+            font-weight: bold;
+            margin-left: 4px;
+        }
 
         /* 帖子一键重试按钮 */
         .post-retry-btn {
@@ -856,6 +1091,7 @@ function injectStyles() {
         .filter-panel h4 { margin: 8px 0 4px 0; font-size: 12px; font-weight: 600; color: #555; border-bottom: 1px solid #eee; padding-bottom: 4px; }
         .filter-panel h4.include { color: #27ae60; }
         .filter-panel h4.exclude { color: #c0392b; }
+        .filter-panel h4.read-mark { color: #3498db; }
         .panel-controls { display: flex; align-items: center; gap: 8px; }
         .input-wrapper { display: flex; gap: 6px; margin-top: 6px; }
         .filter-panel input[type="text"] { flex: 1; width: auto; margin-top: 0; padding: 5px 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; box-sizing: border-box; background: #fff; min-width: 40px; }
@@ -881,6 +1117,118 @@ function injectStyles() {
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #4CAF50; }
         input:checked + .slider:before { transform: translateX(14px); }
+
+        /* 已阅标记控制区域 */
+        .read-mark-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 6px 0;
+        }
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .switch-small {
+            width: 30px;
+            height: 16px;
+        }
+        .switch-small .slider:before {
+            height: 10px;
+            width: 10px;
+        }
+        .switch-small input:checked + .slider:before {
+            transform: translateX(14px);
+        }
+        .read-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        /* 批量操作按钮组 */
+        .batch-buttons {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+        }
+        .batch-btn {
+            flex: 1;
+            padding: 6px 8px;
+            border: none;
+            border-radius: 6px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .batch-btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        .batch-btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+        }
+        .batch-btn-secondary {
+            background: #27ae60;
+            color: white;
+        }
+        .batch-btn-secondary:hover {
+            background: #229954;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(39, 174, 96, 0.3);
+        }
+        .batch-btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+        .batch-btn-warning:hover {
+            background: #d68910;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(243, 156, 18, 0.3);
+        }
+        .batch-btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        .batch-btn-danger:hover {
+            background: #c0392b;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.3);
+        }
+        .batch-btn:active {
+            transform: translateY(0);
+        }
+
+        /* 已弃用的样式，保留以防兼容性问题 */
+        .clear-btn {
+            padding: 6px 12px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        .clear-btn:hover {
+            background: #c0392b;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(231, 76, 60, 0.3);
+        }
+        .clear-btn:active {
+            transform: translateY(0);
+        }
 
         /* 加载统计 */
         .load-stats { font-size: 11px; color: #666; padding: 6px 8px; background: #f5f5f5; border-radius: 4px; text-align: center; margin-top: 4px; line-height: 1.4; }
