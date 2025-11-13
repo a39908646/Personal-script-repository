@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         BT之家 + 1lou 功能增强 (瀑布流卡片版 + TMDB海报)
 // @namespace    https://github.com/a39908646
-// @version      6.2.2
-// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + TMDB官方海报 + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接
+// @version      6.2.3
+// @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + TMDB官方海报 + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接 + Via浏览器兼容性修复
 // @author       a39908646
 // @match        *://*.1lou.me/*
 // @match        *://*.1lou.pro/*
@@ -65,8 +65,9 @@
 
   // 检测是否为移动设备
   const isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-           window.innerWidth <= 768;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent) ||
+           window.innerWidth <= 768 ||
+           ('ontouchstart' in window);
   };
 
   // 检测是否在论坛列表页（排除搜索页）
@@ -1017,7 +1018,7 @@
     const mobile = isMobile();
     style.textContent = `
       #filterPanel { position: fixed; bottom: -100%; ${mobile ? 'left: 0; right: 0; width: 100%;' : 'right: 20px; width: 90%; max-width: 400px;'} max-height: ${mobile ? '70vh' : '80vh'}; overflow-y: auto; background: white; padding: 15px; border: 1px solid #ccc; border-radius: 15px 15px 0 0; z-index: 9999; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); transition: bottom 0.3s ease-in-out; }
-      #toggleFilter { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; font-weight: bold; box-shadow: 0 4px 12px rgba(74, 144, 226, 0.5); z-index: 9998; -webkit-tap-highlight-color: transparent; user-select: none; transition: all 0.2s; }
+      #toggleFilter { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #4a90e2; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; font-weight: bold; box-shadow: 0 4px 12px rgba(74, 144, 226, 0.5); z-index: 10000; -webkit-tap-highlight-color: transparent; user-select: none; transition: all 0.2s; touch-action: manipulation; }
       #toggleFilter:active { transform: scale(0.9); }
       #toggleFilter.hidden { display: none; }
       .panel-header { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; position: relative; min-height: 30px; }
@@ -1184,6 +1185,13 @@
 
     state.panelVisible = !state.panelVisible;
 
+    console.log('🔄 切换面板状态:', {
+      panelVisible: state.panelVisible,
+      panel: !!panel,
+      floatBtn: !!floatBtn,
+      overlay: !!overlay
+    });
+
     panel.style.bottom = state.panelVisible ? "0" : "-100%";
     if (floatBtn) {
       floatBtn.classList.toggle("hidden", state.panelVisible);
@@ -1235,8 +1243,42 @@
     const floatBtn = document.getElementById("toggleFilter");
     const minimizeBtn = document.getElementById("minimizeBtn");
 
-    if (floatBtn) floatBtn.addEventListener("click", togglePanel);
-    if (minimizeBtn) minimizeBtn.addEventListener("click", togglePanel);
+    // 添加调试日志
+    console.log('🔧 添加事件监听器:', {
+      floatBtn: !!floatBtn,
+      minimizeBtn: !!minimizeBtn,
+      isMobile: isMobile(),
+      userAgent: navigator.userAgent
+    });
+
+    if (floatBtn) {
+      // 同时监听 click 和 touchend 事件以提高兼容性
+      floatBtn.addEventListener("click", (e) => {
+        console.log('🖱️ 点击浮动按钮 (click)');
+        e.preventDefault();
+        e.stopPropagation();
+        togglePanel();
+      });
+      floatBtn.addEventListener("touchend", (e) => {
+        console.log('👆 点击浮动按钮 (touchend)');
+        e.preventDefault();
+        e.stopPropagation();
+        togglePanel();
+      }, { passive: false });
+    }
+
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePanel();
+      });
+      minimizeBtn.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePanel();
+      }, { passive: false });
+    }
 
     document.getElementById("saveFilters").addEventListener("click", saveFilters);
     document.getElementById("resetFilters").addEventListener("click", resetFilters);
@@ -1267,6 +1309,15 @@
 
   /* ------------------ 初始化 ------------------ */
   function initialize() {
+    console.log('🚀 开始初始化脚本:', {
+      readyState: document.readyState,
+      hostname: location.hostname,
+      pathname: location.pathname,
+      isMobile: isMobile(),
+      isThreadDetail: isThreadDetailPage(),
+      isForumList: isForumListPage()
+    });
+
     // 如果是详情页，执行详情页增强功能
     if (isThreadDetailPage()) {
       enhanceThreadDetailPage();
@@ -1274,7 +1325,13 @@
     }
 
     // 以下是列表页的逻辑
-    if (!document.querySelector(SELECTORS.LIST_CONTAINER)) return;
+    const listContainer = document.querySelector(SELECTORS.LIST_CONTAINER);
+    if (!listContainer) {
+      console.warn('⚠️ 未找到列表容器，脚本终止');
+      return;
+    }
+
+    console.log('✅ 找到列表容器，继续初始化');
 
     createStyles();
     createFilterPanel();
