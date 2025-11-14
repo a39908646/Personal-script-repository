@@ -180,6 +180,11 @@ function markAllPostsAsRead() {
     let count = 0;
     const now = Date.now();
     document.querySelectorAll("#tbody > tr").forEach(tr => {
+        // 跳过已被过滤隐藏的帖子
+        if (tr.style.display === 'none') {
+            return;
+        }
+
         const titleLink = tr.querySelector("td.tal h3 a");
         const postId = getPostId(titleLink);
         if (postId && !isPostRead(postId)) {
@@ -224,7 +229,7 @@ function loadImageWithTimeout(img, src, parentLink, retryCount = 0) {
         if (isCompleted) return;
         isCompleted = true;
         cleanup();
-        
+
         // 如果还有重试次数，自动重试
         if (retryCount < MAX_RETRY_COUNT) {
             console.log(`🔄 图片加载失败，自动重试 (${retryCount + 1}/${MAX_RETRY_COUNT}):`, src);
@@ -234,10 +239,10 @@ function loadImageWithTimeout(img, src, parentLink, retryCount = 0) {
             }, 1000); // 延迟1秒后重试
             return;
         }
-        
+
         // 重试次数用完，显示占位符
         img.src = '';
-        
+
         if (parentLink && parentLink.parentElement) {
             replaceWithPlaceholder(parentLink, src, reason, retryCount);
         }
@@ -246,10 +251,10 @@ function loadImageWithTimeout(img, src, parentLink, retryCount = 0) {
     // 标准事件监听
     img.addEventListener('load', onSuccess, { once: true });
     img.addEventListener('error', () => onError('加载失败 ❌'), { once: true });
-    
+
     // 超时控制
     timeoutId = setTimeout(() => onError('加载超时 ⏱️'), IMAGE_LOAD_TIMEOUT);
-    
+
     // 设置src触发加载
     img.src = src;
 }
@@ -263,12 +268,12 @@ function loadImageWithTimeout(img, src, parentLink, retryCount = 0) {
  */
 function replaceWithPlaceholder(link, originalSrc, reason, retryCount) {
     const pageUrl = link.href;
-    
+
     const placeholder = document.createElement('div');
     placeholder.className = 'img-placeholder';
     placeholder.dataset.src = originalSrc; // 保存原始地址
     placeholder.dataset.pageUrl = pageUrl;
-    
+
     placeholder.innerHTML = `
         <div class="placeholder-content">
             <span class="placeholder-icon">🖼️</span>
@@ -280,15 +285,15 @@ function replaceWithPlaceholder(link, originalSrc, reason, retryCount) {
             </button>
         </div>
     `;
-    
+
     const reloadBtn = placeholder.querySelector('.reload-btn');
     reloadBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         retryImage(placeholder);
     };
-    
+
     const parent = link.parentElement;
     if (parent) {
         parent.replaceChild(placeholder, link);
@@ -303,19 +308,19 @@ function replaceWithPlaceholder(link, originalSrc, reason, retryCount) {
 function retryImage(placeholder) {
     const originalSrc = placeholder.dataset.src;
     const pageUrl = placeholder.dataset.pageUrl;
-    
+
     if (!originalSrc || !pageUrl) return;
-    
+
     const newLink = document.createElement('a');
     newLink.href = pageUrl;
     newLink.target = '_blank';
-    
+
     const newImg = document.createElement('img');
     newImg.dataset.src = originalSrc;
     newImg.style.opacity = '0.3';
-    
+
     newLink.appendChild(newImg);
-    
+
     const parent = placeholder.parentElement;
     if (parent) {
         parent.replaceChild(newLink, placeholder);
@@ -331,13 +336,13 @@ function retryImage(placeholder) {
 function updateRetryButton(container) {
     const wrapper = container.closest('.preview-wrapper');
     if (!wrapper) return;
-    
+
     const retryBtn = wrapper.parentElement.querySelector('.post-retry-btn');
     if (!retryBtn) return;
-    
+
     const failedCount = wrapper.querySelectorAll('.img-placeholder').length;
     const countSpan = retryBtn.querySelector('.failed-count');
-    
+
     if (failedCount > 0) {
         retryBtn.style.display = 'inline-flex';
         if (countSpan) countSpan.textContent = failedCount;
@@ -579,24 +584,24 @@ function loadNextBatch(sentinel) {
 
 function fetchAndPreparePreviews(tr, postId) {
     const item = tr.querySelector("td.tal");
-    if (!item) { 
-        postQueue.finishLoad(postId); 
-        return; 
+    if (!item) {
+        postQueue.finishLoad(postId);
+        return;
     }
     const aDom = item.querySelector("h3 > a");
-    if (!aDom) { 
-        postQueue.finishLoad(postId); 
-        return; 
+    if (!aDom) {
+        postQueue.finishLoad(postId);
+        return;
     }
 
     const pageUrl = aDom.href;
-    if (!pageUrl) { 
-        postQueue.finishLoad(postId); 
-        return; 
+    if (!pageUrl) {
+        postQueue.finishLoad(postId);
+        return;
     }
-    if (item.dataset.previewLoaded === 'true') { 
-        postQueue.finishLoad(postId); 
-        return; 
+    if (item.dataset.previewLoaded === 'true') {
+        postQueue.finishLoad(postId);
+        return;
     }
 
     item.dataset.previewLoaded = 'true';
@@ -653,7 +658,7 @@ function fetchAndPreparePreviews(tr, postId) {
 function addRetryButton(item, wrap) {
     const h3 = item.querySelector("h3");
     if (!h3 || h3.querySelector('.post-retry-btn')) return;
-    
+
     const retryBtn = document.createElement('button');
     retryBtn.className = 'post-retry-btn';
     retryBtn.style.display = 'none'; // 初始隐藏
@@ -661,13 +666,13 @@ function addRetryButton(item, wrap) {
         <span class="retry-icon">🔄</span>
         <span class="retry-text">重试失败图片 (<span class="failed-count">0</span>)</span>
     `;
-    
+
     retryBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
         retryAllInPost(wrap);
     };
-    
+
     h3.appendChild(retryBtn);
 }
 
@@ -723,7 +728,6 @@ function buildPanel() {
             </h3>
         </header>
         <section id="read-mark-section">
-            <h4 class="read-mark">已阅标记</h4>
             <div class="read-mark-controls">
                 <div class="read-stats">
                     <span class="stat-label">已阅帖子:</span>
