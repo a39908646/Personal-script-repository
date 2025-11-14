@@ -43,6 +43,7 @@
     // --- 配置 ---
     const SETTINGS_KEY = 'u9a9_filter_settings';
     const READ_POSTS_KEY = 'u9a9_read_posts';
+    const PANEL_STATE_KEY = 'u9a9_panel_expanded';
     const IMAGE_LOAD_DELAY_MS = 100;
     const READ_POST_EXPIRE_DAYS = 30;
 
@@ -113,7 +114,11 @@
 
         clearReadPosts: () => {
             GM_setValue(READ_POSTS_KEY, {});
-        }
+        },
+
+        // 面板状态管理
+        getPanelExpanded: () => GM_getValue(PANEL_STATE_KEY, false),
+        setPanelExpanded: (expanded) => GM_setValue(PANEL_STATE_KEY, expanded)
     };
 
     function addKeyword(keyword) {
@@ -283,10 +288,23 @@
         if (hashes.length > 0) {
             dataManager.markMultipleAsRead(hashes);
             runFullScan();
-            alert(`已标记 ${hashes.length} 个帖子为已读`);
+            showReadFeedback(`已标记 ${hashes.length} 个帖子`);
         } else {
-            alert('当前页面没有未读的可见帖子');
+            showReadFeedback('当前页无未读帖子');
         }
+    }
+
+    // --- 显示反馈提示 ---
+    function showReadFeedback(message) {
+        const feedback = document.getElementById('read-feedback');
+        if (!feedback) return;
+
+        feedback.textContent = message;
+        feedback.classList.add('show');
+
+        setTimeout(() => {
+            feedback.classList.remove('show');
+        }, 2000);
     }
 
     // --- UI ---
@@ -331,6 +349,8 @@
             .cancel-edit-btn:hover { background-color: #d1d5db; }
             .button-group { display: flex; gap: 8px; margin-top: 4px; }
             .button-group button { flex: 1; padding: 8px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background-color .2s; }
+            .read-feedback { font-size: 12px; color: var(--filter-primary-color); margin-left: 8px; opacity: 0; transition: opacity .3s; font-weight: normal; }
+            .read-feedback.show { opacity: 1; }
             #export-btn { background-color: var(--filter-primary-color); color: #fff; }
             #import-btn { background-color: #e5e7eb; color: var(--filter-text-primary); }
             #mark-all-read-btn { background-color: var(--filter-primary-color); color: #fff; }
@@ -363,7 +383,7 @@
                     </h3>
                 </div>
                 <div class="filter-section">
-                    <h4>已读管理</h4>
+                    <h4>已读管理<span id="read-feedback" class="read-feedback"></span></h4>
                     <div class="button-group">
                         <button id="mark-all-read-btn" type="button" title="将当前页面所有帖子标记为已读">标记已读</button>
                         <button id="clear-read-btn" type="button" title="清空所有已读记录">清空</button>
@@ -391,7 +411,10 @@
         filterInputIds.add('new-keyword-input');
 
         document.getElementById('filter-toggle-view').addEventListener('mousedown', (e) => {
-            if (e.button === 0) container.classList.add('expanded');
+            if (e.button === 0) {
+                container.classList.add('expanded');
+                dataManager.setPanelExpanded(true);
+            }
             else if (e.button === 1) {
                 e.preventDefault();
                 dataManager.saveFilterEnabled(!dataManager.getFilterEnabled());
@@ -400,7 +423,10 @@
             }
         });
 
-        document.getElementById('close-panel-btn').addEventListener('click', () => container.classList.remove('expanded'));
+        document.getElementById('close-panel-btn').addEventListener('click', () => {
+            container.classList.remove('expanded');
+            dataManager.setPanelExpanded(false);
+        });
         document.getElementById('filter-master-switch').addEventListener('change', (e) => {
             dataManager.saveFilterEnabled(e.target.checked);
             updateAllUI();
@@ -423,7 +449,7 @@
             if (confirm('确定要清空所有已读记录吗？')) {
                 dataManager.clearReadPosts();
                 runFullScan();
-                alert('已清空所有已读记录');
+                showReadFeedback('已清空所有记录');
             }
         });
 
@@ -670,5 +696,11 @@
         runFullScan();
         updateAllUI();
         observeContentChanges();
+
+        // 恢复面板状态
+        const container = document.getElementById('filter-container');
+        if (dataManager.getPanelExpanded()) {
+            container.classList.add('expanded');
+        }
     });
 })();
