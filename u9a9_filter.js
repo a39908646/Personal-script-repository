@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         U9A9 正则表达式过滤器 + 预览图 + 已读标记
 // @namespace    http://tampermonkey.net/
-// @version      10.0
-// @description  添加已读标记功能，已读帖子置灰不加载预览图，自动清理超过30天的记录
+// @version      10.1
+// @description  添加已读标记功能，已读帖子置灰不加载预览图，自动清理超过30天的记录。优化执行顺序：过滤→已读→预览图
 // @author       You
 // @match        https://u9a9.com/*
 // @grant        GM_setValue
@@ -214,8 +214,12 @@
     }
 
     // --- 过滤逻辑 ---
-    function applyFilterToEntry(entry) {
-        if (!entry || !entry.matches || !entry.matches('tr.default')) return;
+    // ========================================
+    // 执行优先级：过滤 → 已读 → 预览图
+    // ========================================
+    // 第一阶段：只处理过滤和已读状态，不涉及预览图（同步、快速）
+    function applyFilterAndReadStatus(entry) {
+        if (!entry || !entry.matches || !entry.matches('tr.default')) return { shouldShow: false, isRead: false };
 
         const hash = extractPostHash(entry);
         const isRead = hash && dataManager.isRead(hash);
@@ -228,32 +232,60 @@
         }
 
         // 应用过滤规则
-        if (!dataManager.getFilterEnabled()) {
-            entry.style.display = '';
-            if (!isRead) injectPreviewImages(entry);
-            return;
+        const filterEnabled = dataManager.getFilterEnabled();
+        let shouldShow = true;
+
+        if (filterEnabled) {
+            const titleElement = entry.querySelector('td:nth-child(2) a');
+            if (titleElement) {
+                const title = titleElement.textContent.trim();
+                const shouldHide = dataManager.getKeywords().some(p => new RegExp(p, 'i').test(title));
+                shouldShow = !shouldHide;
+            }
         }
 
-        const titleElement = entry.querySelector('td:nth-child(2) a');
-        if (!titleElement) {
-            entry.style.display = '';
-            if (!isRead) injectPreviewImages(entry);
-            return;
-        }
+        entry.style.display = shouldShow ? '' : 'none';
 
-        const title = titleElement.textContent.trim();
-        const shouldHide = dataManager.getKeywords().some(p => new RegExp(p, 'i').test(title));
+        return { shouldShow, isRead };
+    }
 
-        entry.style.display = shouldHide ? 'none' : '';
-        // 只有未读且未被隐藏的帖子才加载预览图
-        if (!isRead && !shouldHide) {
+    // 兼容旧的调用方式（用于单个帖子点击后的更新）
+    function applyFilterToEntry(entry) {
+        const { shouldShow, isRead } = applyFilterAndReadStatus(entry);
+
+        // 单个帖子更新时，如果需要显示预览图则立即注入
+        if (shouldShow && !isRead) {
             injectPreviewImages(entry);
         }
     }
 
+    // 全量扫描：两阶段处理，确保过滤完成后再加载预览图
     function runFullScan() {
-        document.querySelectorAll('tr.default').forEach(applyFilterToEntry);
+        const entries = document.querySelectorAll('tr.default');
+
+        // 第一阶段：完成所有过滤和已读状态判断（同步、快速）
+        const visibleUnreadEntries = [];
+        entries.forEach(entry => {
+            const { shouldShow, isRead } = applyFilterAndReadStatus(entry);
+            // 只收集需要加载预览图的帖子：可见 + 未读
+            if (shouldShow && !isRead) {
+                visibleUnreadEntries.push(entry);
+            }
+        });
+
         updateFilterCount();
+
+        // 第二阶段：过滤完成后，批量加载预览图（异步）
+        if (visibleUnreadEntries.length > 0) {
+            requestAnimationFrame(() => {
+                visibleUnreadEntries.forEach(entry => {
+                    // 二次确认：确保帖子仍然可见且未读（避免用户在此期间标记为已读）
+                    if (entry.style.display !== 'none' && !entry.classList.contains('post-read')) {
+                        injectPreviewImages(entry);
+                    }
+                });
+            });
+        }
     }
 
     function updateFilterCount() {
@@ -596,10 +628,10 @@
     const previewCache = new Map();
 
     async function loadImagesForRow(entry) {
-        // 已读帖子不加载预览图
-        if (entry.classList.contains('post-read')) {
-            return;
-        }
+        // 严格检查：只为可见且未读的帖子加载预览图
+        if (!entry) return;
+        if (entry.style.display === 'none') return;
+        if (entry.classList.contains('post-read')) return;
 
         const link = entry.querySelector('td:nth-child(2) a');
         const preview = entry.querySelector('.preview-thumbs');
@@ -615,7 +647,11 @@
         }
 
         imgs.forEach((src, i) => setTimeout(() => {
+            // 再次检查：确保在延迟期间帖子没有被隐藏或标记为已读
             if (!entry.isConnected) return;
+            if (entry.style.display === 'none') return;
+            if (entry.classList.contains('post-read')) return;
+
             const img = preview.appendChild(document.createElement('img'));
             img.src = src;
             img.style.opacity = '0';
@@ -641,20 +677,24 @@
     }
 
     function injectPreviewImages(entry) {
+        // 多重检查，避免不必要的预览图注入
         if (!entry || entry.dataset.pi) return;
 
-        // 已读帖子不注入预览区域
-        if (entry.classList.contains('post-read')) {
-            return;
-        }
+        // 确保帖子可见
+        if (entry.style.display === 'none') return;
+
+        // 确保帖子未读
+        if (entry.classList.contains('post-read')) return;
 
         entry.dataset.pi = "1";
         const link = entry.querySelector('td:nth-child(2) a');
         if (!link) return;
+
         link.insertAdjacentElement('afterend', Object.assign(document.createElement('div'), {
             className: 'preview-thumbs',
             textContent: '滚动加载预览'
         }));
+
         if (imageObserver) imageObserver.observe(entry);
     }
 
@@ -682,9 +722,35 @@
     function observeContentChanges() {
         const t = document.querySelector('table.table tbody');
         if (!t) return;
+
         new MutationObserver(ms => {
-            ms.forEach(m => m.addedNodes.forEach(n => n.nodeType === 1 && n.matches('tr.default') && applyFilterToEntry(n)));
+            const visibleUnreadEntries = [];
+
+            ms.forEach(m => m.addedNodes.forEach(n => {
+                if (n.nodeType === 1 && n.matches('tr.default')) {
+                    // 第一阶段：过滤和已读状态处理
+                    const { shouldShow, isRead } = applyFilterAndReadStatus(n);
+
+                    // 只收集需要加载预览图的帖子
+                    if (shouldShow && !isRead) {
+                        visibleUnreadEntries.push(n);
+                    }
+                }
+            }));
+
             updateFilterCount();
+
+            // 第二阶段：批量加载预览图
+            if (visibleUnreadEntries.length > 0) {
+                requestAnimationFrame(() => {
+                    visibleUnreadEntries.forEach(entry => {
+                        // 二次确认：确保仍然可见且未读
+                        if (entry.style.display !== 'none' && !entry.classList.contains('post-read')) {
+                            injectPreviewImages(entry);
+                        }
+                    });
+                });
+            }
         }).observe(t, { childList: true });
     }
 
