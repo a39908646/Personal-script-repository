@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BT之家 + 1lou 功能增强 (瀑布流卡片版 + TMDB海报)
 // @namespace    https://github.com/a39908646
-// @version      6.2.3
+// @version      6.2.5
 // @description  BTBTT/BT之家关键词过滤 + 1lou 瀑布流卡片 (仅论坛列表页) + TMDB官方海报 + 完整标题 + 磁力链接 + 移动端适配 + 详情页自动磁力链接 + Via浏览器兼容性修复
 // @author       a39908646
 // @match        *://*.1lou.me/*
@@ -237,84 +237,42 @@
   function parseMovieTitle(title) {
     console.log('🔍 原始标题:', title);
 
-    // 常见的无效标签关键词（需要跳过）
-    const invalidTags = /^(BT下载|下载|字幕|简繁|中文字幕|英文字幕|中英|双语|内封|内嵌|外挂|修复|修正|重发|转载|分享|发布|压制|小组|字幕组|国语配音|粤语配音|WEB-?DL|WEBRip|BluRay|BDRip|REMUX|WEB-MP4|HD-?MP4|流媒体|无水印|ColorTV|DoVi|HDR10?|第\d+[-~集季至话期]+|[A-Z]{2,}QT|[A-Z]{2,}TV|[A-Z]{2,}HD)$/i;
-
-    // 质量和格式标记（完全匹配）
-    const qualityTags = /^(4K|2160p|1080p|720p|480p|HDR|DV|DoVi|H\.?26[45]|HEVC|x26[45]|AAC|DTS|TrueHD|Atmos|第\d+[集季])$/i;
-
-    // 提取年份（先提取，避免被清理掉）
+    // 提取年份
     const yearMatch = title.match(/(?:19|20)\d{2}/);
     const year = yearMatch ? yearMatch[0] : null;
 
     // 提取所有 [] 或 【】 中的内容
     const allBrackets = title.match(/[【\[]([^【\[\]】]+)[】\]]/g);
 
-    // 提取中文片名
-    let chineseName = null;
-    if (allBrackets) {
-      for (const bracket of allBrackets) {
-        const content = bracket.replace(/[【\[\]】]/g, '');
-
-        // 跳过无效标签
-        if (invalidTags.test(content)) continue;
-
-        // 必须包含中文
-        if (!/[\u4e00-\u9fa5]/.test(content)) continue;
-
-        // 跳过质量标记
-        if (qualityTags.test(content)) continue;
-
-        // 跳过包含斜杠的（通常是 "国语配音/中文字幕" 这种）
-        if (content.includes('/')) continue;
-
-        // 找到有效的中文片名（可能包含点号和季信息）
-        let cleanName = content;
-
-        // 检查是否包含季信息（如 "仙逆.第一季"）
-        const seasonMatch = cleanName.match(/^(.+?)\.第[一二三四五六七八九十\d]+季$/);
-        if (seasonMatch) {
-          cleanName = seasonMatch[1]; // 提取季信息前的片名
-        }
-
-        // 去除季集信息
-        cleanName = cleanName
-          .replace(/第\d+[集季]|\.第\d+[集季]|S\d+E?\d*|E\d+/gi, '')
-          .replace(/\./g, ' ')
-          .trim();
-
-        if (cleanName && cleanName.length >= 2) {
-          chineseName = cleanName;
-          break;
-        }
-      }
+    if (!allBrackets || allBrackets.length < 2) {
+      console.log('❌ 未找到足够的中括号');
+      return { chineseName: null, englishName: null, year, originalTitle: title };
     }
 
-    // 提取英文片名
+    // 标题格式通常是: [下载方式][影视名称][...]
+    // 但也可能是: [下载方式][影视名称][第X集][...]
+    // 取第二个中括号作为影视名称（可能包含季信息）
+    let movieNameBracket = allBrackets[1].replace(/[【\[\]】]/g, '').trim();
+
+    // 如果第二个中括号是 "第X集/期" 这种格式，说明名称在更前面，可能是特殊格式
+    // 一般情况下第二个中括号就是影视名称
+    let chineseName = null;
     let englishName = null;
-    if (allBrackets) {
-      for (const bracket of allBrackets) {
-        const content = bracket.replace(/[【\[\]】]/g, '');
 
-        // 跳过无效标签
-        if (invalidTags.test(content)) continue;
+    // 处理包含斜杠的情况(如 "弗兰肯斯坦/科学怪人")
+    if (movieNameBracket.includes('/')) {
+      const parts = movieNameBracket.split('/');
+      // 取第一个部分作为主片名
+      chineseName = parts[0].trim();
+    } else {
+      chineseName = movieNameBracket;
+    }
 
-        // 必须是英文（至少3个字母）
-        if (!/[A-Za-z]{3,}/.test(content)) continue;
-
-        // 必须不包含中文
-        if (/[\u4e00-\u9fa5]/.test(content)) continue;
-
-        // 跳过质量标记和格式
-        if (/^(WEB|BluRay|BDRip|REMUX|H\.?26[45]|HEVC|x26[45]|AAC|DTS|mkv|mp4|avi)$/i.test(content)) continue;
-
-        // 找到有效的英文片名
-        englishName = content
-          .replace(/S\d+E?\d*|E\d+/gi, '') // 去除季集信息
-          .trim();
-
-        if (englishName && englishName.length >= 3) break;
-      }
+    // 对于综艺节目/电视剧，保留季信息用于TMDB搜索
+    // 例如 "王牌对王牌.第九季" 应该保留完整名称
+    // 只在最后清理多余的点号
+    if (chineseName) {
+      chineseName = chineseName.trim();
     }
 
     console.log('📝 解析结果:', { chineseName, englishName, year });
@@ -369,34 +327,48 @@
       const preferredType = threadUrl ? getMediaTypeFromUrl(threadUrl) : null;
       console.log('🎯 内容类型判断:', preferredType, '(来源URL:', threadUrl, ')');
 
-      const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(searchQuery)}${year ? `&year=${year}` : ''}`;
+      // 尝试多种搜索方式
+      const searchQueries = [searchQuery];
 
-      const response = await fetch(searchUrl);
-      if (!response.ok) throw new Error(`TMDB API Error: ${response.status}`);
+      // 如果包含季信息(如 "王牌对王牌.第九季")，也尝试去除季信息搜索
+      if (/[.．]第[一二三四五六七八九十\d]+季/.test(searchQuery)) {
+        const baseQuery = searchQuery.replace(/[.．]第[一二三四五六七八九十\d]+季/g, '').trim();
+        searchQueries.push(baseQuery);
+      }
 
-      const data = await response.json();
+      // 依次尝试每个搜索词
+      for (const query of searchQueries) {
+        console.log('🔍 尝试搜索:', query);
 
-      if (data.results && data.results.length > 0) {
-        // 如果有明确的类型偏好，优先选择该类型
-        let result;
-        if (preferredType) {
-          result = data.results.find(r => r.media_type === preferredType);
-          console.log(`🔍 优先查找 ${preferredType} 类型:`, result ? '找到' : '未找到');
-        }
+        const searchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`;
 
-        // 如果没有找到偏好类型，使用默认逻辑
-        if (!result) {
-          result = data.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || data.results[0];
-        }
+        const response = await fetch(searchUrl);
+        if (!response.ok) continue;
 
-        if (result && result.poster_path) {
-          const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
-          console.log('✅ TMDB海报获取成功:', posterUrl, `(类型: ${result.media_type})`);
-          return posterUrl;
+        const data = await response.json();
+
+        if (data.results && data.results.length > 0) {
+          // 如果有明确的类型偏好，优先选择该类型
+          let result;
+          if (preferredType) {
+            result = data.results.find(r => r.media_type === preferredType);
+            console.log(`🔍 优先查找 ${preferredType} 类型:`, result ? '找到' : '未找到');
+          }
+
+          // 如果没有找到偏好类型，使用默认逻辑
+          if (!result) {
+            result = data.results.find(r => r.media_type === 'movie' || r.media_type === 'tv') || data.results[0];
+          }
+
+          if (result && result.poster_path) {
+            const posterUrl = `${CONFIG.TMDB_IMAGE_BASE}${result.poster_path}`;
+            console.log('✅ TMDB海报获取成功:', posterUrl, `(类型: ${result.media_type})`);
+            return posterUrl;
+          }
         }
       }
 
-      // 如果中文搜索失败且有英文名，尝试英文搜索
+      // 如果中文搜索都失败且有英文名，尝试英文搜索
       if (chineseName && englishName && chineseName !== englishName) {
         const enSearchUrl = `${CONFIG.TMDB_API_BASE}/search/multi?api_key=${TMDB_API_KEY}&language=zh-CN&query=${encodeURIComponent(englishName)}${year ? `&year=${year}` : ''}`;
         const enResponse = await fetch(enSearchUrl);
@@ -719,7 +691,7 @@
         </div>
         <div class="card-content">
           <div class="card-title-wrap">
-            <a href="${url}" class="card-title" title="${title}">${title}</a>
+            <a href="${url}" class="card-title" title="${title}" target="_blank" rel="noopener noreferrer">${title}</a>
           </div>
           <div class="card-footer">
             <span class="card-date">加载中...</span>
@@ -797,7 +769,7 @@
         clearTimeout(timeout);
         cardWrap.innerHTML = '';
         cardWrap.appendChild(img);
-        img.onclick = () => window.location.href = threadUrl;
+        img.onclick = () => window.open(threadUrl, '_blank', 'noopener,noreferrer');
         resolve();
       };
 
