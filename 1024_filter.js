@@ -64,6 +64,31 @@ const previewDataStore = new Map();
 let imageObserver, sentinelObserver, postObserver;
 
 // ================================================================= //
+//                    ★ Toast 提示功能 ★
+// ================================================================= //
+
+/**
+ * 显示 Toast 提示
+ * @param {string} message - 提示消息
+ * @param {string} type - 提示类型: 'success' | 'error' | 'info'
+ */
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // 触发动画
+    setTimeout(() => toast.classList.add('show'), 10);
+
+    // 3秒后自动消失
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// ================================================================= //
 //                    ★ 标记已阅功能 ★
 // ================================================================= //
 
@@ -195,7 +220,7 @@ function markAllPostsAsRead() {
     });
     if (count > 0) {
         saveReadPosts(readPosts);
-        alert(`已标记 ${count} 个帖子为已阅`);
+        showToast(`已标记 ${count} 个帖子为已阅`, 'success');
     }
 }
 
@@ -1103,6 +1128,37 @@ function injectStyles() {
         }
         .batch-btn:active {
             transform: translateY(0);
+        }
+
+        /* Toast 提示样式 */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 10001;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+        }
+        .toast-error {
+            background: linear-gradient(135deg, #f44336 0%, #da190b 100%);
+        }
+        .toast-info {
+            background: linear-gradient(135deg, #2196F3 0%, #0b7dda 100%);
         }
     `;
     document.head.appendChild(listStyle);
