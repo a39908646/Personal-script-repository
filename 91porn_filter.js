@@ -693,18 +693,21 @@
             gap: 6px; 
             margin-bottom: 10px; 
             max-height: 150px; 
-            overflow-y: auto; 
+            overflow-y: auto;
+            padding-right: 4px;
         }
         .kw-row { 
             display: flex; 
             align-items: center;
             justify-content: space-between;
+            padding: 6px 10px;
             font-size: 12px; 
             color: #495057;
             transition: background 0.2s;
         }
         .kw-row:hover { 
             background: #e9ecef; 
+            border-radius: 4px;
         }
         .kw-text {
             flex: 1;
