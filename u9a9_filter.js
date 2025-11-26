@@ -10,13 +10,13 @@
 // @run-at       document-start
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // === 最优先：劫持全局回车事件 ===
     let filterInputIds = new Set();
 
-    window.addEventListener('keydown', function(e) {
+    window.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && e.target && filterInputIds.has(e.target.id)) {
             e.preventDefault();
             e.stopPropagation();
@@ -31,7 +31,7 @@
         }
     }, true);
 
-    window.addEventListener('keypress', function(e) {
+    window.addEventListener('keypress', function (e) {
         if (e.key === 'Enter' && e.target && filterInputIds.has(e.target.id)) {
             e.preventDefault();
             e.stopPropagation();
@@ -350,21 +350,21 @@
             #filter-toggle-view svg { width: 28px; height: 28px; color: white; }
             #filter-container.expanded #filter-toggle-view, #filter-container:not(.expanded) #filter-panel-view { display: none; }
             #filter-count-badge { position: absolute; top: 0; right: 0; background-color: var(--filter-danger-color); color: #fff; border-radius: 50%; min-width: 22px; height: 22px; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid var(--filter-bg-main); }
-            #filter-panel-view { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-gutter: stable; }
-            .filter-section { background-color: var(--filter-bg-panel); padding: 12px; border-radius: 10px; }
-            .filter-section h3, .filter-section h4 { margin: 0 0 12px 0; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+            #filter-panel-view { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-gutter: stable; border: 1px solid #e0e0e0; border-radius: 8px; }
+            .filter-section { border-radius: 10px; }
+            .filter-section h3, .filter-section h4 { margin: 0 0 4px 0; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
             .filter-section h3 { font-size: 18px; color: var(--filter-text-primary); }
             .filter-section h4 { font-size: 15px; color: var(--filter-text-primary); }
             #close-panel-btn { background: none; border: none; cursor: pointer; width: 32px; height: 32px; color: var(--filter-text-secondary); border-radius: 50%; font-size: 24px; display: flex; align-items: center; justify-content: center; }
             #close-panel-btn:hover { background-color: #e5e7eb; color: var(--filter-text-primary); }
             .input-group { display: flex; gap: 8px; }
-            .input-group input { flex-grow: 1; padding: 8px 12px; border: none; border-radius: 8px; font-size: 14px; background-color: var(--filter-bg-input); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); }
-            .input-group input:focus { outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05), 0 0 0 3px rgba(59, 130, 246, 0.3); }
+            .input-group input { flex-grow: 1; padding: 8px 12px; border: none; border-radius: 8px; font-size: 14px; background-color: #eeeeee; }
+            .input-group input:focus { outline: none;  }
             .input-group button { flex-shrink: 0; width: 36px; height: 36px; color: #fff; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; }
             #add-keyword-btn { background-color: var(--filter-danger-color); }
-            .keyword-list { list-style: none; padding: 0; margin: 12px 0 0 0; max-height: 200px; overflow-y: auto; }
+            .keyword-list { list-style: none; padding: 0; margin: 12px 0 0 0; max-height: 150px; overflow-y: auto; }
             .keyword-list li { padding: 8px 4px 8px 12px; display: flex; justify-content: space-between; align-items: center; border-radius: 6px; }
-            .keyword-list li:hover { background-color: #eef2ff; }
+            .keyword-list li:hover { background-color: #e9ecef; }
             .keyword-text { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; font-size: 13px; }
             .keyword-actions { display: flex; gap: 4px; }
             .edit-keyword-btn, .remove-keyword-btn { background: none; border: none; cursor: pointer; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: var(--filter-text-secondary); font-size: 16px; font-weight: bold; }

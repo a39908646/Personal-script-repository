@@ -388,11 +388,11 @@
         </section>
         <section id="exclude-section">
             <h4 class="exclude">过滤关键词</h4>
-            <div id="exclude-kw-list" class="kw-list"></div>
             <div class="input-wrapper">
                 <input type="text" id="exclude-kw-input" placeholder="输入正则表达式..."/>
                 <button data-type="exclude" class="add-kw-btn">添加</button>
             </div>
+            <div id="exclude-kw-list" class="kw-list"></div>
         </section>
     `;
         document.body.appendChild(panel);
@@ -526,9 +526,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            margin-bottom: 2px;
         }
         .filter-panel h3 { 
             margin: 0; 
@@ -627,7 +624,6 @@
             padding: 8px 12px;
             background: #f8f9fa;
             border-radius: 6px;
-            border: 1px solid #eee;
         }
         .stat-label { color: #666; font-weight: 500; }
         .stat-value { 
@@ -673,15 +669,14 @@
 
         /* 过滤区域 */
         #exclude-section {
-            border-top: 1px solid #eee;
-            padding-top: 12px;
+            padding-top: 8px;
             margin-top: 4px;
         }
         .filter-panel h4 { 
             margin: 0 0 10px 0; 
-            font-size: 13px; 
+            font-size: 15px; 
             font-weight: 600; 
-            color: #555; 
+            color: #000000; 
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -691,7 +686,7 @@
             display: flex; 
             flex-direction: column;
             gap: 6px; 
-            margin-bottom: 10px; 
+            margin-top: 4px; 
             max-height: 150px; 
             overflow-y: auto;
             padding-right: 4px;
